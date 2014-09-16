@@ -56,7 +56,7 @@ type ReadHandler interface {
 // ReadHandler that calls f.
 type ReadHandlerFunc func(resp ReadResponseWriter, req *ReadRequest)
 
-// Read returns f(r, maxlen, offset).
+// ServeRead returns f(r, maxlen, offset).
 func (f ReadHandlerFunc) ServeRead(resp ReadResponseWriter, req *ReadRequest) {
 	f(resp, req)
 }
@@ -74,7 +74,7 @@ type WriteHandler interface {
 // WriteHandler that calls f.
 type WriteHandlerFunc func(r Request, data []byte) byte
 
-// Write returns f(r, data).
+// ServeWrite returns f(r, data).
 func (f WriteHandlerFunc) ServeWrite(r Request, data []byte) byte {
 	return f(r, data)
 }
@@ -91,7 +91,7 @@ type NotifyHandler interface {
 // NotifyHandler that calls f.
 type NotifyHandlerFunc func(r Request, n Notifier)
 
-// Notify calls f(r, n).
+// ServeNotify calls f(r, n).
 func (f NotifyHandlerFunc) ServeNotify(r Request, n Notifier) {
 	f(r, n)
 }
@@ -232,6 +232,7 @@ func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
 	return n, handles
 }
 
+// UUID returns the characteristic's UUID
 func (c *Characteristic) UUID() UUID {
 	return c.uuid
 }
