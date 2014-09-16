@@ -40,9 +40,8 @@ func (h handle) isDescriptor(uuid UUID) bool {
 
 func generateHandles(name string, svcs []*Service, base uint16) *handleRange {
 	svcs = append(defaultServices(name), svcs...)
-	handles := make([]handle, 0)
+	var handles []handle
 	n := base
-
 	for _, svc := range svcs {
 		var hh []handle
 		n, hh = svc.generateHandles(n)
