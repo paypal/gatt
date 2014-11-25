@@ -180,19 +180,6 @@ func (c *l2cap) send(b []byte) error {
 	return err
 }
 
-type attErr struct {
-	opcode uint8
-	handle uint16
-	status uint8
-}
-
-// TODO: Reformulate in a way that lets the caller avoid allocs.
-// Accept a []byte? Write directly to an io.Writer?
-func (e attErr) Marshal() []byte {
-	// little-endian encoding for handle
-	return []byte{attOpError, e.opcode, byte(e.handle), byte(e.handle >> 8), e.status}
-}
-
 // handleReq dispatches a raw request from the l2cap shim
 // to an appropriate handler, based on its type.
 // It panics if len(b) == 0.
