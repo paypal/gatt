@@ -204,7 +204,7 @@ func (c *l2cap) handleReq(b []byte) error {
 	case attOpReadMultiReq, attOpPrepWriteReq, attOpExecWriteReq, attOpSignedWriteCmd:
 		fallthrough
 	default:
-		resp = attErr{opcode: reqType, handle: 0x0000, status: attEcodeReqNotSupp}.Marshal()
+		resp = attErrorResp(reqType, 0x0000, attEcodeReqNotSupp)
 	}
 
 	return c.send(resp)
@@ -266,7 +266,7 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	}
 
 	if uuidLen == -1 {
-		return attErr{opcode: attOpFindInfoReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindInfoReq, start, attEcodeAttrNotFound)
 	}
 	return w.Bytes()
 }
@@ -275,7 +275,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	if uuid := (UUID{reverse(b[4:6])}); !uuidEqual(uuid, gattAttrPrimaryServiceUUID) {
-		return attErr{opcode: attOpFindByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindByTypeReq, start, attEcodeAttrNotFound)
 	}
 
 	uuid := UUID{reverse(b[6:])}
@@ -298,7 +298,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	}
 
 	if !wrote {
-		return attErr{opcode: attOpFindByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindByTypeReq, start, attEcodeAttrNotFound)
 	}
 
 	return w.Bytes()
@@ -334,7 +334,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 			}
 		}
 		if uuidLen == -1 {
-			return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+			return attErrorResp(attOpReadByTypeReq, start, attEcodeAttrNotFound)
 		}
 		return w.Bytes()
 	}
@@ -361,10 +361,10 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	}
 
 	if !found {
-		return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpReadByTypeReq, start, attEcodeAttrNotFound)
 	}
 	if secure && c.security > securityLow {
-		return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAuthentication}.Marshal()
+		return attErrorResp(attOpReadByTypeReq, start, attEcodeAuthentication)
 	}
 
 	valueh, ok := c.handles.At(valuen)
@@ -394,7 +394,7 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 
 	h, ok := c.handles.At(valuen)
 	if !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	w := newL2capWriter(c.mtu)
@@ -418,10 +418,10 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 			valueh = vh
 		}
 		if valueh.props&charRead == 0 {
-			return attErr{opcode: reqType, handle: valuen, status: attEcodeReadNotPerm}.Marshal()
+			return attErrorResp(reqType, valuen, attEcodeReadNotPerm)
 		}
 		if valueh.secure&charRead != 0 && c.security > securityLow {
-			return attErr{opcode: reqType, handle: valuen, status: attEcodeAuthentication}.Marshal()
+			return attErrorResp(reqType, valuen, attEcodeAuthentication)
 		}
 		if h.value != nil {
 			w.WriteFit(h.value)
@@ -430,18 +430,18 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
 			data, status := c.handler.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
-				return attErr{opcode: reqType, handle: valuen, status: byte(status)}.Marshal()
+				return attErrorResp(reqType, valuen, byte(status))
 			}
 			w.WriteFit(data)
 			offset = 0 // the handler has already adjusted for the offset
 		}
 	default:
 		// Shouldn't happen?
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if ok := w.ChunkSeek(offset); !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidOffset}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidOffset)
 	}
 
 	w.CommitFit()
@@ -459,7 +459,7 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	case uuidEqual(uuid, gattAttrIncludeUUID):
 		typ = typIncludedService
 	default:
-		return attErr{opcode: attOpReadByGroupReq, handle: start, status: attEcodeUnsuppGrpType}.Marshal()
+		return attErrorResp(attOpReadByGroupReq, start, attEcodeUnsuppGrpType)
 	}
 
 	w := newL2capWriter(c.mtu)
@@ -485,7 +485,7 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 		}
 	}
 	if uuidLen == -1 {
-		return attErr{opcode: attOpReadByGroupReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpReadByGroupReq, start, attEcodeAttrNotFound)
 	}
 
 	return w.Bytes()
@@ -497,7 +497,7 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	h, ok := c.handles.At(valuen)
 	if !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if h.typ == typCharacteristicValue {
@@ -515,10 +515,10 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 	}
 
 	if h.props&charFlag == 0 {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeWriteNotPerm}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeWriteNotPerm)
 	}
 	if h.secure&charFlag == 0 && c.security > securityLow {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeAuthentication}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeAuthentication)
 	}
 
 	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
@@ -528,14 +528,14 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 			return nil
 		}
 		if result != StatusSuccess {
-			return attErr{opcode: reqType, handle: valuen, status: byte(result)}.Marshal()
+			return attErrorResp(reqType, valuen, byte(result))
 		}
 		return []byte{attOpWriteResp}
 	}
 
 	// CCC/descriptor write
 	if len(data) != 2 {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalAttrValueLen}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalAttrValueLen)
 	}
 
 	ccc := binary.LittleEndian.Uint16(data)

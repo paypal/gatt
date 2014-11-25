@@ -52,6 +52,10 @@ const (
 	attEcodeInsuffResources   = 0x11
 )
 
+func attErrorResp(op byte, h uint16, s uint8) []byte {
+	return attErr{opcode: op, handle: h, status: s}.Marshal()
+}
+
 // attRespFor maps from att request
 // codes to att response codes.
 var attRespFor = map[byte]byte{
