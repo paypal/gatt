@@ -18,35 +18,35 @@
 //
 // gatt only supports Linux, with BlueZ installed. This may change.
 //
-// Installed the required packages, e.g.:
+// To gain complete and exclusive control of the HCI device, gatt uses
+// HCI_CHANNEL_USER (introduced in Linux v3.14) instead of HCI_CHANNEL_RAW.
+// Those who must use an older kernel may patch in these relevant commits
+// from Marcel Holtmann:
 //
-//     sudo apt-get install bluez libbluetooth-dev libcap2-bin
+//     Bluetooth: Introduce new HCI socket channel for user operation
+//     Bluetooth: Introduce user channel flag for HCI devices
+//     Bluetooth: Refactor raw socket filter into more readable code
+//
+// Note that because gatt uses HCI_CHANNEL_USER, once gatt has opened the
+// device no other program may access it.
+//
+// Before starting a gatt program, make sure that your BLE device is down:
+//
+//     sudo hciconfig
+//     sudo hciconfig hci0 down  # or whatever hci device you want to use
 //
 // If you have BlueZ 5.14+ (or aren't sure), stop the built-in
 // bluetooth server, which interferes with gatt, e.g.:
 //
 //     sudo service bluetooth stop
 //
-// gatt uses two helper executables. The source for them is in the
-// c directory. There's an included makefile. It currently assumes
-// that your native compiler is gcc and that you want the executables
-// in /usr/local/bin. If /usr/local/bin is not already in your PATH,
-// add it. If you don't like those assumptions, edit the makefile.
-// (TODO: Get someone with strong makefile-fu to help me clean this up.)
+// Because gatt programs administer network devices, they must
+// either be run as root, or be granted appropriate capabilities:
 //
-//     export PATH="$PATH:/usr/local/bin"
-//     cd $GOPATH/src/github.com/paypal/gatt/c
-//     make
-//     sudo make install
-//
-// Root is required in the install phase to give hci-ble permissions
-// to administer the network.
-//
-// Make sure that your BLE device is up:
-//
-//     sudo hciconfig
-//     sudo hciconfig hci0 up  # or whatever hci device you want to use
-//
+//     sudo <executable>
+//     # OR
+//     sudo setcap 'CAP_NET_ADMIN=+ep' <executable>
+//     <executable>
 //
 // USAGE
 //
