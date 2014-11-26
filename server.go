@@ -2,11 +2,7 @@ package gatt
 
 import (
 	"errors"
-	"fmt"
 	"net"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 // MaxEIRPacketLength is the maximum allowed AdvertisingPacket
@@ -21,70 +17,31 @@ var ErrEIRPacketTooLong = errors.New("max packet length is 31")
 // a Server has been closed, it cannot be restarted. Instead, create
 // a new Server. Only one server may be running at a time.
 type Server struct {
-	// Name is the device name, exposed via the Generic Access Service (0x1800).
-	// Name may not be changed while serving.
-	Name string
+	name           string
+	hci            string
+	connect        func(c Conn)
+	disconnect     func(c Conn)
+	receiveRSSI    func(c Conn, rssi int)
+	closed         func(error)
+	stateChange    func(newState string)
+	maxConnections int
 
-	// HCI is the hci device to use, e.g. "hci1".
-	// If HCI is "", an hci device will be selected
-	// automatically.
-	HCI string
-
-	// AdvertisingPacket is an optional custom advertising packet.
-	// If nil, the advertising packet will constructed to advertise
-	// as many services as possible. AdvertisingPacket must be set,
-	// if at all, before starting the server. The AdvertisingPacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	AdvertisingPacket []byte
-
-	// ScanResponsePacket is an optional custom scan response packet.
-	// If nil, the scan response packet will set to return the server
-	// name, truncated if necessary. ScanResponsePacket must be set,
-	// if at all, before starting the server. The ScanResponsePacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	ScanResponsePacket []byte
-
-	// TODO: Add a way to disable connections? The iBeacon advertising
-	// packet will advertise that the device is not connectable. Do
-	// we also need to enforce that?
-	// AdvertiseOnly bool
-
-	// Connect is an optional callback function that will be called
-	// when a device has connected to the server.
-	Connect func(c Conn)
-
-	// Disconnect is an optional callback function that will be called
-	// when a device has disconnected from the server.
-	Disconnect func(c Conn)
-
-	// ReceiveRSSI is an optional callback function that will be called
-	// when an RSSI measurement has been received for a connection.
-	ReceiveRSSI func(c Conn, rssi int)
-
-	// Closed is an optional callback function that will be called
-	// when the server is closed. err will be any associated error.
-	// If the server was closed by calling Close, err may be nil.
-	Closed func(error)
-
-	// StateChange is an optional callback function that will be called
-	// when the server changes states.
-	// TODO: Break these states out into separate, meaningful methods?
-	// At least document them.
-	StateChange func(newState string)
-
-	serving bool
-
-	hci   *hci
-	l2cap *l2cap
-
-	addr BDAddr
-
+	addr     BDAddr
 	services []*Service
 	handles  *handleRange
-
-	quitonce sync.Once
+	serving  bool
 	quit     chan struct{}
 	err      error
+
+	adv advertiser
+}
+
+func NewServer(opts ...option) *Server {
+	s := &Server{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // AddService registers a new Service with the server.
@@ -98,131 +55,68 @@ func (s *Server) AddService(u UUID) *Service {
 	return svc
 }
 
-// TODO: Helper function to construct iBeacon advertising packet.
-// See e.g. http://stackoverflow.com/questions/18906988.
-
-func (s *Server) startAdvertising() error {
-	return s.hci.advertiseEIR(s.AdvertisingPacket, s.ScanResponsePacket)
+// SetAdvertisement builds advertisement data from the specified
+// UUIDs and optional manufacture data. If the UUIDs is set to
+// nil, the UUIDs of added services will be used instead.
+func (s *Server) SetAdvertisement(u []UUID, m []byte) error {
+	return s.setAdvertisement(u, m)
 }
 
+// StartAdvertising starts advertising.
+func (s *Server) StartAdvertising() {
+	s.adv.Start()
+}
+
+// StopAdvertising stops advertising.
+func (s *Server) StopAdvertising() {
+	s.adv.Stop()
+}
+
+// Advertising return the status of advertising.
+func (s *Server) Advertising() bool {
+	return s.adv.Serving()
+}
+
+// AdvetiseAndServe builds the advertising data from the UUIDs of
+// added services, starts the server, and starts advertising.
 func (s *Server) AdvertiseAndServe() error {
-	if len(s.AdvertisingPacket) > MaxEIRPacketLength || len(s.ScanResponsePacket) > MaxEIRPacketLength {
-		return ErrEIRPacketTooLong
+	if s.serving {
+		return errors.New("a server is already running")
 	}
-
-	if s.ScanResponsePacket == nil && s.Name != "" {
-		s.ScanResponsePacket = nameScanResponsePacket(s.Name)
-	}
-
-	if s.AdvertisingPacket == nil {
-		uuids := make([]UUID, len(s.services))
-		for i, svc := range s.services {
-			uuids[i] = svc.UUID()
+	go func() {
+		if err := s.SetAdvertisement(nil, nil); err != nil {
+			s.err = err
+			s.Close()
 		}
-		s.AdvertisingPacket, _ = serviceAdvertisingPacket(uuids)
-	}
-
+	}()
 	if err := s.start(); err != nil {
 		return err
 	}
-
-	select {
-	case <-s.quit:
-		return s.err
-	default:
-	}
-
 	s.serving = true
-
-	if err := s.setServices(s.Name, s.services); err != nil {
-		return err
-	}
-	if err := s.startAdvertising(); err != nil {
-		return err
-	}
-
-	return s.l2cap.listenAndServe()
+	s.adv.Start()
+	<-s.quit
+	return s.err
 }
 
-// cleanHCIDevice converts hci (user-provided)
-// into a format safe to pass to the c shims.
-func cleanHCIDevice(hci string) string {
-	if hci == "" {
-		return ""
+// Serve starts the server.
+func (s *Server) Serve() error {
+	if s.serving {
+		return errors.New("a server is already running")
 	}
-	if strings.HasPrefix(hci, "hci") {
-		hci = hci[len("hci"):]
+	if err := s.start(); err != nil {
+		return err
 	}
-	if n, err := strconv.Atoi(hci); err != nil || n < 0 {
-		return ""
-	}
-	return hci
+	s.serving = true
+	<-s.quit
+	return s.err
 }
 
-func (s *Server) setServices(name string, svcs []*Service) error {
+func (s *Server) setServices() error {
 	// cannot be called while serving
-	if s.Serving {
+	if s.serving {
 		return errors.New("cannot set services while serving")
 	}
-	s.handles = generateHandles(name, svcs, uint16(1)) // ble handles start at 1
-	// log.Println("Generated handles: ", s.handles)
-	return nil
-}
-
-func (s *Server) start() error {
-	hciDevice := cleanHCIDevice(s.HCI)
-
-	hciShim, err := newCShim("hci-ble", hciDevice)
-	if err != nil {
-		return err
-	}
-
-	s.quit = make(chan struct{})
-
-	s.hci = newHCI(hciShim)
-	event, err := s.hci.event()
-	if err != nil {
-		return err
-	}
-	if event == "unauthorized" {
-		return errors.New("unauthorized; does l2cap-ble have the correct permissions?")
-	}
-	if event != "poweredOn" {
-		return fmt.Errorf("unexpected hci event: %q", event)
-	}
-	// TODO: If you kill and restart the server quickly, you get event
-	// "unsupported". Waiting and then starting again fixes it.
-	// Figure out why, and handle it automatically.
-
-	go func() {
-		for {
-			// No need to check s.quit here; if the users closes the server,
-			// hci will get killed, which'll cause an error to be returned here.
-			event, err := s.hci.event()
-			if err != nil {
-				break
-			}
-			if s.StateChange != nil {
-				s.StateChange(event)
-			}
-		}
-		s.close(err)
-	}()
-
-	if s.Closed != nil {
-		go func() {
-			<-s.quit
-			s.Closed(s.err)
-		}()
-	}
-
-	l2capShim, err := newCShim("l2cap-ble", hciDevice)
-	if err != nil {
-		s.close(err)
-		return err
-	}
-
-	s.l2cap = newL2cap(l2capShim, s)
+	s.handles = generateHandles(s.name, s.services, uint16(1)) // ble handles start at 1
 	return nil
 }
 
@@ -231,26 +125,115 @@ func (s *Server) Close() error {
 	if !s.serving {
 		return errors.New("not serving")
 	}
-	err := s.hci.Close()
-	l2caperr := s.l2cap.close()
-	if err == nil {
-		err = l2caperr
-	}
-	s.close(err)
-	return err
+	s.adv.Stop()
+	s.serving = false
+	close(s.quit)
+	return nil
 }
+
+type option func(*Server) option
+
+// Option sets the options specified.
+func (s *Server) Option(opts ...option) (prev option) {
+	for _, opt := range opts {
+		prev = opt(s)
+	}
+	return prev
+}
+
+// Name is the device name, exposed via the Generic Access Service (0x1800).
+// Name may not be changed while serving.
+func Name(n string) option {
+	return func(s *Server) option {
+		prev := s.name
+		s.name = n
+		return Name(prev)
+	}
+}
+
+// HCI is the hci device to use, e.g. "hci1".
+// If HCI is "", an hci device will be selected
+// automatically.
+func HCI(n string) option {
+	return func(s *Server) option {
+		prev := s.hci
+		s.hci = n
+		return HCI(prev)
+	}
+}
+
+// Connect is an optional callback function that will be called
+// when a device has connected to the server.
+func Connect(f func(c Conn)) option {
+	return func(s *Server) option {
+		prev := s.connect
+		s.connect = f
+		return Connect(prev)
+	}
+}
+
+// Disconnect is an optional callback function that will be called
+// when a device has disconnected from the server.
+func Disconnect(f func(c Conn)) option {
+	return func(s *Server) option {
+		prev := s.disconnect
+		s.disconnect = f
+		return Disconnect(prev)
+	}
+}
+
+// ReceiveRSSI is an optional callback function that will be called
+// when an RSSI measurement has been received for a connection.
+func ReceiveRSSI(f func(c Conn, rssi int)) option {
+	return func(s *Server) option {
+		prev := s.receiveRSSI
+		s.receiveRSSI = f
+		return ReceiveRSSI(prev)
+	}
+}
+
+// Closed is an optional callback function that will be called
+// when the server is closed. err will be any associated error.
+// If the server was closed by calling Close, err may be nil.
+func Closed(f func(error)) option {
+	return func(s *Server) option {
+		prev := s.closed
+		s.closed = f
+		return Closed(prev)
+	}
+}
+
+// StateChange is an optional callback function that will be called
+// when the server changes states.
+// TODO: Break these states out into separate, meaningful methods?
+// At least document them.
+func StateChange(f func(newState string)) option {
+	return func(s *Server) option {
+		prev := s.stateChange
+		s.stateChange = f
+		return StateChange(prev)
+	}
+}
+
+// MaxConnections sets the maximum connections supported by the device.
+// TODO: Extend the semantic to cover the AdvertiseOnly?
+func MaxConnections(n int) option {
+	return func(s *Server) option {
+		prev := s.maxConnections
+		s.maxConnections = n
+		return MaxConnections(prev)
+	}
+}
+
+// TODO: Helper function to construct iBeacon advertising packet.
+// See e.g. http://stackoverflow.com/questions/18906988.
 
 // A BDAddr (Bluetooth Device Address) is a
 // hardware-addressed-based net.Addr.
-type BDAddr struct {
-	net.HardwareAddr
-}
+type BDAddr struct{ net.HardwareAddr }
 
 func (a BDAddr) Network() string { return "BLE" }
 
-// Conn is a BLE connection. Due to the limitations of Bluetooth 4.0,
-// there is only one active connection at a time; this will change in
-// Bluetooth 4.1.
 type Conn interface {
 	// LocalAddr returns the address of the connected device (central).
 	LocalAddr() BDAddr
@@ -270,11 +253,4 @@ type Conn interface {
 
 	// MTU returns the current connection mtu.
 	MTU() int
-}
-
-func (s *Server) close(err error) {
-	s.quitonce.Do(func() {
-		s.err = err
-		close(s.quit)
-	})
 }

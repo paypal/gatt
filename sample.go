@@ -14,14 +14,15 @@ import (
 )
 
 func main() {
-	srv := &gatt.Server{
-		Name:        "gophers",
-		Connect:     func(c gatt.Conn) { log.Println("Connect: ", c) },
-		Disconnect:  func(c gatt.Conn) { log.Println("Disconnect: ", c) },
-		ReceiveRSSI: func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) },
-		Closed:      func(err error) { log.Println("Server closed: ", err) },
-		StateChange: func(newState string) { log.Println("Server state change: ", newState) },
-	}
+	srv := gatt.NewServer(
+		gatt.Name("gophers"),
+		gatt.Connect(func(c gatt.Conn) { log.Println("Connect: ", c) }),
+		gatt.Disconnect(func(c gatt.Conn) { log.Println("Disconnect: ", c) }),
+		gatt.ReceiveRSSI(func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) }),
+		gatt.Closed(func(err error) { log.Println("Server closed: ", err) }),
+		gatt.StateChange(func(newState string) { log.Println("Server state change: ", newState) }),
+		gatt.MaxConnections(1),
+	)
 
 	svc := srv.AddService(gatt.MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
 
