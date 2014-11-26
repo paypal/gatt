@@ -430,7 +430,7 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
 			data, status := c.handler.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
-				return attErrorResp(reqType, valuen, byte(status))
+				return attErrorResp(reqType, valuen, status)
 			}
 			w.WriteFit(data)
 			offset = 0 // the handler has already adjusted for the offset
@@ -528,7 +528,7 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 			return nil
 		}
 		if result != StatusSuccess {
-			return attErrorResp(reqType, valuen, byte(result))
+			return attErrorResp(reqType, valuen, result)
 		}
 		return []byte{attOpWriteResp}
 	}
