@@ -72,6 +72,8 @@ type Server struct {
 	// At least document them.
 	StateChange func(newState string)
 
+	Serving bool
+
 	hci   *hci
 	l2cap *l2cap
 
@@ -96,7 +98,7 @@ type Server struct {
 // AddService registers a new Service with the server.
 // All services must be added before starting the server.
 func (s *Server) AddService(u UUID) *Service {
-	if serving() {
+	if s.Serving {
 		return nil
 	}
 	svc := &Service{uuid: u}
@@ -111,25 +113,7 @@ func (s *Server) startAdvertising() error {
 	return s.hci.advertiseEIR(s.AdvertisingPacket, s.ScanResponsePacket)
 }
 
-// serverRunning prevents multiple servers from being started concurrently.
-var (
-	serverRunningMu sync.RWMutex
-	serverRunning   bool
-)
-
-func serving() bool {
-	serverRunningMu.RLock()
-	defer serverRunningMu.RUnlock()
-	return serverRunning
-}
-
 func (s *Server) AdvertiseAndServe() error {
-	serverRunningMu.Lock()
-	defer serverRunningMu.Unlock()
-	if serverRunning {
-		return errors.New("a server is already running")
-	}
-
 	if len(s.AdvertisingPacket) > MaxEIRPacketLength || len(s.ScanResponsePacket) > MaxEIRPacketLength {
 		return ErrEIRPacketTooLong
 	}
@@ -156,7 +140,7 @@ func (s *Server) AdvertiseAndServe() error {
 	default:
 	}
 
-	serverRunning = true
+	s.Serving = true
 
 	if err := s.l2cap.setServices(s.Name, s.services); err != nil {
 		return err
@@ -242,7 +226,7 @@ func (s *Server) start() error {
 
 // Close stops a Server.
 func (s *Server) Close() error {
-	if !serving() {
+	if !s.Serving {
 		return errors.New("not serving")
 	}
 	err := s.hci.Close()
@@ -251,9 +235,6 @@ func (s *Server) Close() error {
 		err = l2caperr
 	}
 	s.close(err)
-	serverRunningMu.Lock()
-	serverRunning = false
-	serverRunningMu.Unlock()
 	return err
 }
 
