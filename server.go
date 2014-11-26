@@ -2,20 +2,13 @@ package gatt
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net"
-	"strconv"
-	"strings"
-	"sync"
+	"time"
+
+	"github.com/roylee17/hci"
+	"github.com/roylee17/hci/device"
 )
-
-// MaxEIRPacketLength is the maximum allowed AdvertisingPacket
-// and ScanResponsePacket length.
-const MaxEIRPacketLength = 31
-
-// ErrEIRPacketTooLong is the error returned when an AdvertisingPacket
-// or ScanResponsePacket is too long.
-var ErrEIRPacketTooLong = errors.New("max packet length is 31")
 
 // A Server is a GATT server. Servers are single-shot types; once
 // a Server has been closed, it cannot be restarted. Instead, create
@@ -29,20 +22,6 @@ type Server struct {
 	// If HCI is "", an hci device will be selected
 	// automatically.
 	HCI string
-
-	// AdvertisingPacket is an optional custom advertising packet.
-	// If nil, the advertising packet will constructed to advertise
-	// as many services as possible. AdvertisingPacket must be set,
-	// if at all, before starting the server. The AdvertisingPacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	AdvertisingPacket []byte
-
-	// ScanResponsePacket is an optional custom scan response packet.
-	// If nil, the scan response packet will set to return the server
-	// name, truncated if necessary. ScanResponsePacket must be set,
-	// if at all, before starting the server. The ScanResponsePacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	ScanResponsePacket []byte
 
 	// TODO: Add a way to disable connections? The iBeacon advertising
 	// packet will advertise that the device is not connectable. Do
@@ -74,22 +53,22 @@ type Server struct {
 
 	Serving bool
 
-	hci   *hci
-	l2cap *l2cap
+	ManufactureData []byte
 
 	// MaxConnections Set the maximum connections supported by the device.
 	// TODO: Extend the semantic to cover the AdvertiseOnly?
 	MaxConnections int
 
+	adv *Advertiser
 
 	addr BDAddr
 
 	services []*Service
-	handles  *handleRange
 
-	quitonce sync.Once
-	quit     chan struct{}
-	err      error
+	handles *handleRange
+
+	quit chan struct{}
+	err  error
 }
 
 // AddService registers a new Service with the server.
@@ -106,128 +85,81 @@ func (s *Server) AddService(u UUID) *Service {
 // TODO: Helper function to construct iBeacon advertising packet.
 // See e.g. http://stackoverflow.com/questions/18906988.
 
-func (s *Server) startAdvertising() error {
-	return s.hci.advertiseEIR(s.AdvertisingPacket, s.ScanResponsePacket)
+func (s *Server) AdvertiseAndServe() error {
+	go s.SetAdvertisement(nil, nil)
+	return s.Serve()
 }
 
-func (s *Server) AdvertiseAndServe() error {
-	if len(s.AdvertisingPacket) > MaxEIRPacketLength || len(s.ScanResponsePacket) > MaxEIRPacketLength {
-		return ErrEIRPacketTooLong
+func (s *Server) Serve() error {
+	if s.Serving {
+		return errors.New("a server is already running")
 	}
-
-	if s.ScanResponsePacket == nil && s.Name != "" {
-		s.ScanResponsePacket = nameScanResponsePacket(s.Name)
-	}
-
-	if s.AdvertisingPacket == nil {
-		uuids := make([]UUID, len(s.services))
-		for i, svc := range s.services {
-			uuids[i] = svc.UUID()
-		}
-		s.AdvertisingPacket, _ = serviceAdvertisingPacket(uuids)
-	}
-
 	if err := s.start(); err != nil {
 		return err
 	}
 
-	select {
-	case <-s.quit:
-		return s.err
-	default:
-	}
-
 	s.Serving = true
-
-	if err := s.setServices(s.Name, s.services); err != nil {
-		return err
-	}
-	if err := s.startAdvertising(); err != nil {
-		return err
-	}
-
-	return s.l2cap.listenAndServe()
+	<-s.quit
+	return s.err
 }
 
-// cleanHCIDevice converts hci (user-provided)
-// into a format safe to pass to the c shims.
-func cleanHCIDevice(hci string) string {
-	if hci == "" {
-		return ""
-	}
-	if strings.HasPrefix(hci, "hci") {
-		hci = hci[len("hci"):]
-	}
-	if n, err := strconv.Atoi(hci); err != nil || n < 0 {
-		return ""
-	}
-	return hci
-}
-
-func (s *Server) setServices(name string, svcs []*Service) error {
+func (s *Server) setServices() error {
 	// cannot be called while serving
 	if s.Serving {
 		return errors.New("cannot set services while serving")
 	}
-	s.handles = generateHandles(name, svcs, uint16(1)) // ble handles start at 1
-	// log.Println("Generated handles: ", s.handles)
+	s.handles = generateHandles(s.Name, s.services, uint16(1)) // ble handles start at 1
 	return nil
 }
 
 func (s *Server) start() error {
-	hciDevice := cleanHCIDevice(s.HCI)
-
-	hciShim, err := newCShim("hci-ble", hciDevice)
+	// logger := log.New(os.Stderr, "", log.LstdFlags)
+	var logger *log.Logger
+	// FIXME: fix the sloppiness here
+	d, err := device.NewSocket(1)
 	if err != nil {
+		d, err = device.NewSocket(0)
+		if err != nil {
+			return err
+		}
+	}
+	h := hci.NewHCI(d, logger, s.MaxConnections)
+	a := NewAdvertiser(h)
+	l := h.L2CAP()
+	l.Adv = a
+
+	if err := s.setServices(); err != nil {
 		return err
 	}
 
 	s.quit = make(chan struct{})
-
-	s.hci = newHCI(hciShim)
-	event, err := s.hci.event()
-	if err != nil {
-		return err
-	}
-	if event == "unauthorized" {
-		return errors.New("unauthorized; does l2cap-ble have the correct permissions?")
-	}
-	if event != "poweredOn" {
-		return fmt.Errorf("unexpected hci event: %q", event)
-	}
-	// TODO: If you kill and restart the server quickly, you get event
-	// "unsupported". Waiting and then starting again fixes it.
-	// Figure out why, and handle it automatically.
+	s.adv = a
 
 	go func() {
 		for {
-			// No need to check s.quit here; if the users closes the server,
-			// hci will get killed, which'll cause an error to be returned here.
-			event, err := s.hci.event()
-			if err != nil {
-				break
-			}
-			if s.StateChange != nil {
-				s.StateChange(event)
+			select {
+			case l2c := <-l.ConnC():
+				remoteAddr := BDAddr{net.HardwareAddr(l2c.Param.PeerAddress[:])}
+				gc := newConn(s, l2c, remoteAddr)
+				go func() {
+					if s.Connect != nil {
+						s.Connect(gc)
+					}
+					gc.loop()
+					if s.Disconnect != nil {
+						s.Disconnect(gc)
+					}
+				}()
+			case <-s.quit:
+				h.Close()
+				if s.Closed != nil {
+					s.Closed(s.err)
+				}
+				return
 			}
 		}
-		s.close(err)
 	}()
-
-	if s.Closed != nil {
-		go func() {
-			<-s.quit
-			s.Closed(s.err)
-		}()
-	}
-
-	l2capShim, err := newCShim("l2cap-ble", hciDevice)
-	if err != nil {
-		s.close(err)
-		return err
-	}
-
-	s.l2cap = newL2cap(l2capShim, s)
+	h.Start()
 	return nil
 }
 
@@ -236,20 +168,33 @@ func (s *Server) Close() error {
 	if !s.Serving {
 		return errors.New("not serving")
 	}
-	err := s.hci.Close()
-	l2caperr := s.l2cap.close()
-	if err == nil {
-		err = l2caperr
-	}
-	s.close(err)
-	return err
+	s.adv.Stop()
+	s.Serving = false
+	close(s.quit)
+	return nil
 }
 
-func (s *Server) close(err error) {
-	s.quitonce.Do(func() {
-		s.err = err
-		close(s.quit)
-	})
+func (s *Server) SetAdvertisement(u []UUID, m []byte) {
+	if len(u) == 0 {
+		for _, svc := range s.services {
+			u = append(u, svc.uuid)
+		}
+	}
+	// Wait until server is intitalized, or stopped
+	for !s.Serving {
+		select {
+		case <-s.quit:
+			return
+		case <-time.After(time.Second):
+		}
+	}
+	s.adv.mu.Lock()
+	s.adv.AdvertisingPacket, _ = ServiceAdvertisingPacket(u)
+	s.adv.ScanResponsePacket = NameScanResponsePacket(s.Name)
+	s.adv.ManufactureData = m
+	s.adv.mu.Unlock()
+	s.adv.AdvertiseService()
+	s.adv.Start()
 }
 
 // A BDAddr (Bluetooth Device Address) is a
@@ -260,9 +205,6 @@ type BDAddr struct {
 
 func (a BDAddr) Network() string { return "BLE" }
 
-// Conn is a BLE connection. Due to the limitations of Bluetooth 4.0,
-// there is only one active connection at a time; this will change in
-// Bluetooth 4.1.
 type Conn interface {
 	// LocalAddr returns the address of the connected device (central).
 	LocalAddr() BDAddr
