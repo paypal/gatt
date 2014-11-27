@@ -471,3 +471,27 @@ func (c *conn) sendNotification(char *Characteristic, data []byte) (int, error) 
 func readHandleRange(b []byte) (start, end uint16) {
 	return binary.LittleEndian.Uint16(b), binary.LittleEndian.Uint16(b[2:])
 }
+
+func (s *Server) readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte) {
+	req := &ReadRequest{Request: s.request(c), Cap: maxlen, Offset: offset}
+	resp := newReadResponseWriter(maxlen)
+	c.rhandler.ServeRead(resp, req)
+	return resp.bytes(), resp.status
+}
+
+func (s *Server) writeChar(c *Characteristic, data []byte, noResponse bool) (status byte) {
+	return c.whandler.ServeWrite(s.request(c), data)
+}
+
+func (s *Server) startNotify(c *Characteristic, maxlen int) {
+	if c.notifier != nil {
+		return
+	}
+	c.notifier = newNotifier(s.l2cap, c, maxlen)
+	c.nhandler.ServeNotify(s.request(c), c.notifier)
+}
+
+func (s *Server) stopNotify(c *Characteristic) {
+	c.notifier.stop()
+	c.notifier = nil
+}
