@@ -79,15 +79,6 @@ type Server struct {
 
 	addr BDAddr
 
-	// For now, there is one active conn per server; stash it here.
-	// The conn part of the API is for forward-compatibility.
-	// When Bluetooth 4.1 hits, there may be multiple active
-	// connections per server, at which point, we'll need to
-	// thread the connection through at each event. We won't
-	// be able to do that without l2cap/BlueZ support, though.
-	connmu sync.RWMutex
-	conn   *conn
-
 	services []*Service
 	handles  *handleRange
 
@@ -286,60 +277,4 @@ func (s *Server) close(err error) {
 		s.err = err
 		close(s.quit)
 	})
-}
-
-// l2capHandler methods
-
-func (s *Server) receivedBDAddr(bdaddr string) {
-	hwaddr, err := net.ParseMAC(bdaddr)
-	if err != nil {
-		s.addr = BDAddr{hwaddr}
-	}
-}
-
-func (s *Server) connected(addr net.HardwareAddr) {
-	s.connmu.Lock()
-	s.conn = newConn(s, s.l2cap, BDAddr{addr})
-	go s.conn.loop()
-	s.connmu.Unlock()
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.Connect != nil {
-		s.Connect(s.conn)
-	}
-}
-
-func (s *Server) disconnected(hw net.HardwareAddr) {
-	// Stop all notifiers
-	// TODO: Clear all descriptor CCC values?
-	s.conn.close()
-	if s.Disconnect != nil {
-		s.Disconnect(s.conn)
-	}
-	s.connmu.Lock()
-	s.conn = nil
-	s.connmu.Unlock()
-	if err := s.startAdvertising(); err != nil {
-		s.close(err)
-	}
-}
-
-func (s *Server) receivedRSSI(rssi int) {
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.conn != nil {
-		s.conn.rssi = rssi
-		if s.ReceiveRSSI != nil {
-			s.ReceiveRSSI(s.conn, rssi)
-		}
-	}
-}
-
-func (s *Server) disconnect(c *conn) error {
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.conn != c {
-		return errors.New("already disconnected")
-	}
-	return c.server.l2cap.disconnect()
 }
