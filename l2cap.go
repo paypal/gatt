@@ -30,7 +30,6 @@ type l2cap struct {
 	shim    shim
 	readbuf *bufio.Reader
 	sendmu  sync.Mutex // serializes writes to the shim
-	handles *handleRange
 	server  *Server
 	serving bool
 	quit    chan struct{}
@@ -77,16 +76,6 @@ func (c *l2cap) listenAndServe() error {
 	c.serving = true
 	c.quit = make(chan struct{})
 	return c.eventloop()
-}
-
-func (c *l2cap) setServices(name string, svcs []*Service) error {
-	// cannot be called while serving
-	if c.serving {
-		return errors.New("cannot set services while serving")
-	}
-	c.handles = generateHandles(name, svcs, uint16(1)) // ble handles start at 1
-	// log.Println("Generated handles: ", c.handles)
-	return nil
 }
 
 func (c *l2cap) close() error {
