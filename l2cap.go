@@ -20,30 +20,19 @@ func newL2cap(s shim, server *Server) *l2cap {
 	c := &l2cap{
 		shim:    s,
 		readbuf: bufio.NewReader(s),
-		mtu:     23,
 		server:  server,
 	}
 	return c
 }
 
-type security int
-
-const (
-	securityLow = iota
-	securityMed
-	securityHigh
-)
-
 type l2cap struct {
-	shim     shim
-	readbuf  *bufio.Reader
-	sendmu   sync.Mutex // serializes writes to the shim
-	mtu      uint16
-	handles  *handleRange
-	security security
-	server   *Server
-	serving  bool
-	quit     chan struct{}
+	shim    shim
+	readbuf *bufio.Reader
+	sendmu  sync.Mutex // serializes writes to the shim
+	handles *handleRange
+	server  *Server
+	serving bool
+	quit    chan struct{}
 }
 
 func (c *l2cap) listenAndServe() error {
@@ -104,7 +93,6 @@ func (c *l2cap) eventloop() error {
 				return errors.New("failed to parse accepted addr " + f[1] + ": " + err.Error())
 			}
 			c.server.connected(hw)
-			c.mtu = 23
 		case "disconnect":
 			hw, err := net.ParseMAC(f[1])
 			if err != nil {
@@ -120,11 +108,11 @@ func (c *l2cap) eventloop() error {
 		case "security":
 			switch f[1] {
 			case "low":
-				c.security = securityLow
+				c.server.conn.security = securityLow
 			case "medium":
-				c.security = securityMed
+				c.server.conn.security = securityMed
 			case "high":
-				c.security = securityHigh
+				c.server.conn.security = securityHigh
 			default:
 				return errors.New("unexpected security change: " + f[1])
 			}
@@ -138,8 +126,10 @@ func (c *l2cap) eventloop() error {
 			if err != nil {
 				return err
 			}
-			if err = c.handleReq(req); err != nil {
-				return err
+			if rsp := c.server.conn.handleReq(req); rsp != nil {
+				if err := c.send(rsp); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -154,8 +144,8 @@ func (c *l2cap) updateRSSI() error {
 }
 
 func (c *l2cap) send(b []byte) error {
-	if len(b) > int(c.mtu) {
-		panic(fmt.Errorf("cannot send %x: mtu %d", b, c.mtu))
+	if len(b) > int(c.server.conn.mtu) {
+		panic(fmt.Errorf("cannot send %x: mtu %d", b, c.server.conn.mtu))
 	}
 
 	// log.Printf("L2CAP: Sending %x", b)
