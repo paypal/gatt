@@ -15,12 +15,13 @@ import (
 
 func main() {
 	srv := &gatt.Server{
-		Name:        "gophers",
-		Connect:     func(c gatt.Conn) { log.Println("Connect: ", c) },
-		Disconnect:  func(c gatt.Conn) { log.Println("Disconnect: ", c) },
-		ReceiveRSSI: func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) },
-		Closed:      func(err error) { log.Println("Server closed: ", err) },
-		StateChange: func(newState string) { log.Println("Server state change: ", newState) },
+		Name:           "gophers",
+		Connect:        func(c gatt.Conn) { log.Println("Connect: ", c) },
+		Disconnect:     func(c gatt.Conn) { log.Println("Disconnect: ", c) },
+		ReceiveRSSI:    func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) },
+		Closed:         func(err error) { log.Println("Server closed: ", err) },
+		StateChange:    func(newState string) { log.Println("Server state change: ", newState) },
+		MaxConnections: 1, // BLE 4.0 devices only support 1 connection at a time
 	}
 
 	svc := srv.AddService(gatt.MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))

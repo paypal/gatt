@@ -77,6 +77,11 @@ type Server struct {
 	hci   *hci
 	l2cap *l2cap
 
+	// MaxConnections Set the maximum connections supported by the device.
+	// TODO: Extend the semantic to cover the AdvertiseOnly?
+	MaxConnections int
+
+
 	addr BDAddr
 
 	services []*Service
