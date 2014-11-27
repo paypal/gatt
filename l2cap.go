@@ -16,27 +16,13 @@ import (
 	"syscall"
 )
 
-// l2capHandler is the set of callback methods required to handle l2cap events.
-type l2capHandler interface {
-	readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte)
-	writeChar(c *Characteristic, data []byte, noResponse bool) (status byte)
-	startNotify(c *Characteristic, maxlen int)
-	stopNotify(c *Characteristic)
-	connected(hw net.HardwareAddr)
-	disconnected(hw net.HardwareAddr)
-	receivedRSSI(rssi int)
-	receivedBDAddr(bdaddr string)
-	// TODO: MTUChange?
-	// TODO: SecurityChange?
-}
-
 // newL2cap uses s to provide l2cap access.
-func newL2cap(s shim, handler l2capHandler) *l2cap {
+func newL2cap(s shim, server *Server) *l2cap {
 	c := &l2cap{
 		shim:    s,
 		readbuf: bufio.NewReader(s),
 		mtu:     23,
-		handler: handler,
+		server:  server,
 	}
 	return c
 }
@@ -56,7 +42,7 @@ type l2cap struct {
 	mtu      uint16
 	handles  *handleRange
 	security security
-	handler  l2capHandler
+	server   *Server
 	serving  bool
 	quit     chan struct{}
 }
@@ -118,20 +104,20 @@ func (c *l2cap) eventloop() error {
 			if err != nil {
 				return errors.New("failed to parse accepted addr " + f[1] + ": " + err.Error())
 			}
-			c.handler.connected(hw)
+			c.server.connected(hw)
 			c.mtu = 23
 		case "disconnect":
 			hw, err := net.ParseMAC(f[1])
 			if err != nil {
 				return errors.New("failed to parse disconnected addr " + f[1] + ": " + err.Error())
 			}
-			c.handler.disconnected(hw)
+			c.server.disconnected(hw)
 		case "rssi":
 			n, err := strconv.Atoi(f[1])
 			if err != nil {
 				return errors.New("failed to parse rssi " + f[1] + ": " + err.Error())
 			}
-			c.handler.receivedRSSI(n)
+			c.server.receivedRSSI(n)
 		case "security":
 			switch f[1] {
 			case "low":
@@ -145,7 +131,7 @@ func (c *l2cap) eventloop() error {
 			}
 			// TODO: notify l2capHandler about security change
 		case "bdaddr":
-			c.handler.receivedBDAddr(f[1])
+			c.server.receivedBDAddr(f[1])
 		case "hciDeviceId":
 			// log.Printf("l2cap hci device: %s", f[1])
 		case "data":
@@ -181,7 +167,7 @@ func (c *l2cap) send(b []byte) error {
 }
 
 // handleReq dispatches a raw request from the l2cap shim
-// to an appropriate handler, based on its type.
+// to an appropriate server, based on its type.
 // It panics if len(b) == 0.
 func (c *l2cap) handleReq(b []byte) error {
 	var resp []byte
@@ -428,12 +414,12 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 		} else {
 			// Ask server for data
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
-			data, status := c.handler.readChar(char, int(c.mtu-1), int(offset))
+			data, status := c.server.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
 				return attErrorResp(reqType, valuen, status)
 			}
 			w.WriteFit(data)
-			offset = 0 // the handler has already adjusted for the offset
+			offset = 0 // the server has already adjusted for the offset
 		}
 	default:
 		// Shouldn't happen?
@@ -523,7 +509,7 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
 		// Regular write, not CCC
-		result := c.handler.writeChar(h.attr.(*Characteristic), data, noResp)
+		result := c.server.writeChar(h.attr.(*Characteristic), data, noResp)
 		if noResp {
 			return nil
 		}
@@ -544,14 +530,14 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	if ccc&gattCCCNotifyFlag == 0 {
 		// TODO: Suppress these calls if the notification state hasn't actually changed
-		c.handler.stopNotify(char)
+		c.server.stopNotify(char)
 		if noResp {
 			return nil
 		}
 		return []byte{attOpWriteResp}
 	}
 
-	c.handler.startNotify(char, int(c.mtu-3))
+	c.server.startNotify(char, int(c.mtu-3))
 	if noResp {
 		return nil
 	}
