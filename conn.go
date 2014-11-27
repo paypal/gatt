@@ -6,11 +6,21 @@ import (
 	"fmt"
 )
 
+type security int
+
+const (
+	securityLow = iota
+	securityMed
+	securityHigh
+)
+
 type conn struct {
 	server     *Server
 	localAddr  BDAddr
 	remoteAddr BDAddr
 	rssi       int
+	mtu        uint16
+	security   security
 }
 
 func newConn(server *Server, addr BDAddr) *conn {
@@ -19,6 +29,8 @@ func newConn(server *Server, addr BDAddr) *conn {
 		rssi:       -1,
 		localAddr:  server.addr,
 		remoteAddr: addr,
+		mtu:        23,
+		security:   securityLow,
 	}
 }
 
@@ -27,17 +39,17 @@ func (c *conn) LocalAddr() BDAddr  { return c.localAddr }
 func (c *conn) RemoteAddr() BDAddr { return c.remoteAddr }
 func (c *conn) Close() error       { return c.server.disconnect(c) }
 func (c *conn) RSSI() int          { return c.rssi }
-func (c *conn) MTU() int           { return int(c.server.l2cap.mtu) }
+func (c *conn) MTU() int           { return int(c.mtu) }
 
 func (c *conn) UpdateRSSI() (rssi int, err error) {
 	// TODO
 	return 0, errors.New("not implemented yet")
 }
 
-// handleReq dispatches a raw request from the l2cap shim
-// to an appropriate server, based on its type.
+// handleReq dispatches a raw request from the conn shim
+// to an appropriate handler, based on its type.
 // It panics if len(b) == 0.
-func (c *l2cap) handleReq(b []byte) error {
+func (c *conn) handleReq(b []byte) []byte {
 	var resp []byte
 
 	switch reqType, req := b[0], b[1:]; reqType {
@@ -61,10 +73,10 @@ func (c *l2cap) handleReq(b []byte) error {
 		resp = attErrorResp(reqType, 0x0000, attEcodeReqNotSupp)
 	}
 
-	return c.send(resp)
+	return resp
 }
 
-func (c *l2cap) handleMTU(b []byte) []byte {
+func (c *conn) handleMTU(b []byte) []byte {
 	c.mtu = binary.LittleEndian.Uint16(b)
 	// This sanity check helps keep the response
 	// writing code easier, since you don't have
@@ -78,13 +90,13 @@ func (c *l2cap) handleMTU(b []byte) []byte {
 	return []byte{attOpMtuResp, uint8(c.mtu), uint8(c.mtu >> 8)}
 }
 
-func (c *l2cap) handleFindInfo(b []byte) []byte {
+func (c *conn) handleFindInfo(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpFindInfoResp)
 	uuidLen := -1
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
 		var uuid UUID
 		switch h.typ {
 		case typService:
@@ -125,7 +137,7 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleFindByType(b []byte) []byte {
+func (c *conn) handleFindByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	if uuid := (UUID{reverse(b[4:6])}); !uuidEqual(uuid, gattAttrPrimaryServiceUUID) {
@@ -138,7 +150,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	w.WriteByteFit(attOpFindByTypeResp)
 
 	var wrote bool
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
 		if !h.isPrimaryService(uuid) {
 			continue
 		}
@@ -158,7 +170,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleReadByType(b []byte) []byte {
+func (c *conn) handleReadByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
@@ -167,7 +179,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 		w := newL2capWriter(c.mtu)
 		w.WriteByteFit(attOpReadByTypeResp)
 		uuidLen := -1
-		for _, h := range c.handles.Subrange(start, end) {
+		for _, h := range c.server.l2cap.handles.Subrange(start, end) {
 			if h.typ != typCharacteristic {
 				continue
 			}
@@ -199,7 +211,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	var found bool
 	var secure bool
 
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
 		if h.isCharacteristic(uuid) {
 			valuen = h.valuen
 			secure = h.secure&charRead != 0
@@ -221,11 +233,11 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 		return attErrorResp(attOpReadByTypeReq, start, attEcodeAuthentication)
 	}
 
-	valueh, ok := c.handles.At(valuen)
+	valueh, ok := c.server.l2cap.handles.At(valuen)
 	if !ok {
 		// This can only happen (I think) if we've done
 		// a bad job constructing our handles.
-		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.handles))
+		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.server.l2cap.handles))
 	}
 	w := newL2capWriter(c.mtu)
 	datalen := w.Writeable(4, valueh.value)
@@ -237,16 +249,15 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
+func (c *conn) handleRead(reqType byte, b []byte) []byte {
 	valuen := binary.LittleEndian.Uint16(b)
 	var offset uint16
 	if reqType == attOpReadBlobReq {
 		offset = binary.LittleEndian.Uint16(b[2:])
 	}
 	respType := attRespFor[reqType]
-	_ = offset
 
-	h, ok := c.handles.At(valuen)
+	h, ok := c.server.l2cap.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
@@ -265,9 +276,9 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	case typCharacteristicValue, typDescriptor:
 		valueh := h
 		if h.typ == typCharacteristicValue {
-			vh, ok := c.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
+			vh, ok := c.server.l2cap.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
 			if !ok {
-				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
+				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d:\n\nHandles: %#v", valuen-1, c.server.l2cap.handles))
 			}
 			valueh = vh
 		}
@@ -302,7 +313,7 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleReadByGroup(b []byte) []byte {
+func (c *conn) handleReadByGroup(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
@@ -319,7 +330,7 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpReadByGroupResp)
 	uuidLen := -1
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
 		if h.typ != typ {
 			continue
 		}
@@ -345,19 +356,19 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
+func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 	valuen := binary.LittleEndian.Uint16(b)
 	data := b[2:]
 
-	h, ok := c.handles.At(valuen)
+	h, ok := c.server.l2cap.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if h.typ == typCharacteristicValue {
-		vh, ok := c.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
+		vh, ok := c.server.l2cap.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
 		if !ok {
-			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
+			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: \n\nHandles: %#v", valuen-1, c.server.l2cap.handles))
 		}
 		h = vh
 	}
@@ -412,13 +423,13 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 	return []byte{attOpWriteResp}
 }
 
-func (c *l2cap) sendNotification(char *Characteristic, data []byte) error {
+func (c *conn) sendNotification(char *Characteristic, data []byte) error {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpHandleNotify)
 	w.WriteUint16Fit(char.valuen)
 	w.WriteFit(data)
 	b := w.Bytes()
-	return c.send(b)
+	return c.server.l2cap.send(b)
 }
 
 func readHandleRange(b []byte) (start, end uint16) {
