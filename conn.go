@@ -26,6 +26,7 @@ type conn struct {
 	l2conn      io.ReadWriteCloser
 	notifiers   map[*Characteristic]*notifier
 	notifiersmu *sync.Mutex
+	private     interface{}
 }
 
 func newConn(server *Server, l2conn io.ReadWriteCloser, addr BDAddr) *conn {
@@ -60,6 +61,10 @@ func (c *conn) UpdateRSSI() (rssi int, err error) {
 	// TODO
 	return 0, errors.New("not implemented yet")
 }
+
+func (c *conn) SetPrivateData(p interface{}) { c.private = p }
+func (c *conn) PrivateData() interface{}     { return c.private }
+
 func (c *conn) close() error {
 	// Stop all notifiers
 	// TODO: Clear all descriptor CCC values?
