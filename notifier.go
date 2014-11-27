@@ -32,7 +32,7 @@ func (n *notifier) Write(data []byte) (int, error) {
 		return 0, errors.New("central stopped notifications")
 	}
 	<-n.throttle.C
-	if err := n.l2c.sendNotification(n.char, data); err != nil {
+	if err := n.l2c.server.conn.sendNotification(n.char, data); err != nil {
 		return 0, err
 	}
 	return len(data), nil
