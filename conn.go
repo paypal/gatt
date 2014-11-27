@@ -322,7 +322,7 @@ func (c *conn) handleRead(reqType byte, b []byte) []byte {
 		} else {
 			// Ask server for data
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
-			data, status := c.server.readChar(char, int(c.mtu-1), int(offset))
+			data, status := c.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
 				return attErrorResp(reqType, valuen, status)
 			}
@@ -417,7 +417,7 @@ func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 
 	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
 		// Regular write, not CCC
-		result := c.server.writeChar(h.attr.(*Characteristic), data, noResp)
+		result := c.writeChar(h.attr.(*Characteristic), data, noResp)
 		if noResp {
 			return nil
 		}
@@ -438,14 +438,14 @@ func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 
 	if ccc&gattCCCNotifyFlag == 0 {
 		// TODO: Suppress these calls if the notification state hasn't actually changed
-		c.server.stopNotify(char)
+		c.stopNotify(char)
 		if noResp {
 			return nil
 		}
 		return []byte{attOpWriteResp}
 	}
 
-	c.server.startNotify(char, int(c.mtu-3))
+	c.startNotify(char, int(c.mtu-3))
 	if noResp {
 		return nil
 	}
@@ -465,26 +465,35 @@ func readHandleRange(b []byte) (start, end uint16) {
 	return binary.LittleEndian.Uint16(b), binary.LittleEndian.Uint16(b[2:])
 }
 
-func (s *Server) readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte) {
-	req := &ReadRequest{Request: s.request(c), Cap: maxlen, Offset: offset}
+func (c *conn) request(char *Characteristic) Request {
+	return Request{
+		Server:         c.server,
+		Service:        char.service,
+		Characteristic: char,
+		Conn:           c,
+	}
+}
+
+func (c *conn) readChar(char *Characteristic, maxlen int, offset int) (data []byte, status byte) {
+	req := &ReadRequest{Request: c.request(char), Cap: maxlen, Offset: offset}
 	resp := newReadResponseWriter(maxlen)
-	c.rhandler.ServeRead(resp, req)
+	char.rhandler.ServeRead(resp, req)
 	return resp.bytes(), resp.status
 }
 
-func (s *Server) writeChar(c *Characteristic, data []byte, noResponse bool) (status byte) {
-	return c.whandler.ServeWrite(s.request(c), data)
+func (c *conn) writeChar(char *Characteristic, data []byte, noResponse bool) (status byte) {
+	return char.whandler.ServeWrite(c.request(char), data)
 }
 
-func (s *Server) startNotify(c *Characteristic, maxlen int) {
-	if c.notifier != nil {
+func (c *conn) startNotify(char *Characteristic, maxlen int) {
+	if char.notifier != nil {
 		return
 	}
-	c.notifier = newNotifier(s.l2cap, c, maxlen)
-	c.nhandler.ServeNotify(s.request(c), c.notifier)
+	char.notifier = newNotifier(c.server.l2cap, char, maxlen)
+	char.nhandler.ServeNotify(c.request(char), char.notifier)
 }
 
-func (s *Server) stopNotify(c *Characteristic) {
-	c.notifier.stop()
-	c.notifier = nil
+func (c *conn) stopNotify(char *Characteristic) {
+	char.notifier.stop()
+	char.notifier = nil
 }
