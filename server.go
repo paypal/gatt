@@ -324,7 +324,8 @@ func (s *Server) stopNotify(c *Characteristic) {
 
 func (s *Server) connected(addr net.HardwareAddr) {
 	s.connmu.Lock()
-	s.conn = newConn(s, BDAddr{addr})
+	s.conn = newConn(s, s.l2cap, BDAddr{addr})
+	go s.conn.loop()
 	s.connmu.Unlock()
 	s.connmu.RLock()
 	defer s.connmu.RUnlock()
