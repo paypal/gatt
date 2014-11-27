@@ -286,42 +286,6 @@ func (s *Server) receivedBDAddr(bdaddr string) {
 	}
 }
 
-func (s *Server) request(c *Characteristic) Request {
-	s.connmu.RLock()
-	r := Request{
-		Server:         s,
-		Service:        c.service,
-		Characteristic: c,
-		Conn:           s.conn,
-	}
-	s.connmu.RUnlock()
-	return r
-}
-
-func (s *Server) readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte) {
-	req := &ReadRequest{Request: s.request(c), Cap: maxlen, Offset: offset}
-	resp := newReadResponseWriter(maxlen)
-	c.rhandler.ServeRead(resp, req)
-	return resp.bytes(), resp.status
-}
-
-func (s *Server) writeChar(c *Characteristic, data []byte, noResponse bool) (status byte) {
-	return c.whandler.ServeWrite(s.request(c), data)
-}
-
-func (s *Server) startNotify(c *Characteristic, maxlen int) {
-	if c.notifier != nil {
-		return
-	}
-	c.notifier = newNotifier(s.l2cap, c, maxlen)
-	c.nhandler.ServeNotify(s.request(c), c.notifier)
-}
-
-func (s *Server) stopNotify(c *Characteristic) {
-	c.notifier.stop()
-	c.notifier = nil
-}
-
 func (s *Server) connected(addr net.HardwareAddr) {
 	s.connmu.Lock()
 	s.conn = newConn(s, s.l2cap, BDAddr{addr})
