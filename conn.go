@@ -130,7 +130,7 @@ func (c *conn) handleFindInfo(b []byte) []byte {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpFindInfoResp)
 	uuidLen := -1
-	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		var uuid UUID
 		switch h.typ {
 		case typService:
@@ -184,7 +184,7 @@ func (c *conn) handleFindByType(b []byte) []byte {
 	w.WriteByteFit(attOpFindByTypeResp)
 
 	var wrote bool
-	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if !h.isPrimaryService(uuid) {
 			continue
 		}
@@ -213,7 +213,7 @@ func (c *conn) handleReadByType(b []byte) []byte {
 		w := newL2capWriter(c.mtu)
 		w.WriteByteFit(attOpReadByTypeResp)
 		uuidLen := -1
-		for _, h := range c.server.l2cap.handles.Subrange(start, end) {
+		for _, h := range c.server.handles.Subrange(start, end) {
 			if h.typ != typCharacteristic {
 				continue
 			}
@@ -245,7 +245,7 @@ func (c *conn) handleReadByType(b []byte) []byte {
 	var found bool
 	var secure bool
 
-	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if h.isCharacteristic(uuid) {
 			valuen = h.valuen
 			secure = h.secure&charRead != 0
@@ -267,11 +267,11 @@ func (c *conn) handleReadByType(b []byte) []byte {
 		return attErrorResp(attOpReadByTypeReq, start, attEcodeAuthentication)
 	}
 
-	valueh, ok := c.server.l2cap.handles.At(valuen)
+	valueh, ok := c.server.handles.At(valuen)
 	if !ok {
 		// This can only happen (I think) if we've done
 		// a bad job constructing our handles.
-		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.server.l2cap.handles))
+		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.server.handles))
 	}
 	w := newL2capWriter(c.mtu)
 	datalen := w.Writeable(4, valueh.value)
@@ -291,7 +291,7 @@ func (c *conn) handleRead(reqType byte, b []byte) []byte {
 	}
 	respType := attRespFor[reqType]
 
-	h, ok := c.server.l2cap.handles.At(valuen)
+	h, ok := c.server.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
@@ -310,9 +310,9 @@ func (c *conn) handleRead(reqType byte, b []byte) []byte {
 	case typCharacteristicValue, typDescriptor:
 		valueh := h
 		if h.typ == typCharacteristicValue {
-			vh, ok := c.server.l2cap.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
+			vh, ok := c.server.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
 			if !ok {
-				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d:\n\nHandles: %#v", valuen-1, c.server.l2cap.handles))
+				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d:\n\nHandles: %#v", valuen-1, c.server.handles))
 			}
 			valueh = vh
 		}
@@ -364,7 +364,7 @@ func (c *conn) handleReadByGroup(b []byte) []byte {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpReadByGroupResp)
 	uuidLen := -1
-	for _, h := range c.server.l2cap.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if h.typ != typ {
 			continue
 		}
@@ -394,15 +394,15 @@ func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 	valuen := binary.LittleEndian.Uint16(b)
 	data := b[2:]
 
-	h, ok := c.server.l2cap.handles.At(valuen)
+	h, ok := c.server.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if h.typ == typCharacteristicValue {
-		vh, ok := c.server.l2cap.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
+		vh, ok := c.server.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
 		if !ok {
-			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: \n\nHandles: %#v", valuen-1, c.server.l2cap.handles))
+			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: \n\nHandles: %#v", valuen-1, c.server.handles))
 		}
 		h = vh
 	}

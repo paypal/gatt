@@ -89,6 +89,7 @@ type Server struct {
 	conn   *conn
 
 	services []*Service
+	handles  *handleRange
 
 	quitonce sync.Once
 	quit     chan struct{}
@@ -142,7 +143,7 @@ func (s *Server) AdvertiseAndServe() error {
 
 	s.Serving = true
 
-	if err := s.l2cap.setServices(s.Name, s.services); err != nil {
+	if err := s.setServices(s.Name, s.services); err != nil {
 		return err
 	}
 	if err := s.startAdvertising(); err != nil {
@@ -165,6 +166,16 @@ func cleanHCIDevice(hci string) string {
 		return ""
 	}
 	return hci
+}
+
+func (s *Server) setServices(name string, svcs []*Service) error {
+	// cannot be called while serving
+	if s.Serving {
+		return errors.New("cannot set services while serving")
+	}
+	s.handles = generateHandles(name, svcs, uint16(1)) // ble handles start at 1
+	// log.Println("Generated handles: ", s.handles)
+	return nil
 }
 
 func (s *Server) start() error {
