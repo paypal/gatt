@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ func newL2cap(s shim, server *Server) *l2cap {
 		shim:    s,
 		readbuf: bufio.NewReader(s),
 		server:  server,
+		readc:   make(chan []byte),
 	}
 	return c
 }
@@ -33,6 +35,40 @@ type l2cap struct {
 	server  *Server
 	serving bool
 	quit    chan struct{}
+	readc   chan []byte
+}
+
+func (c *l2cap) Read(b []byte) (int, error) {
+	d, ok := <-c.readc
+	if !ok {
+		return 0, nil
+	}
+	if len(d) > len(b) {
+		return 0, io.ErrShortBuffer
+	}
+	copy(b, d)
+	return len(d), nil
+}
+
+func (c *l2cap) Write(b []byte) (int, error) {
+	if len(b) > int(c.server.conn.mtu) {
+		panic(fmt.Errorf("cannot send %x: mtu %d", b, c.server.conn.mtu))
+	}
+
+	// log.Printf("L2CAP: Sending %x", b)
+	c.sendmu.Lock()
+	_, err := fmt.Fprintf(c.shim, "%x\n", b)
+	c.sendmu.Unlock()
+	return len(b), err
+}
+
+func (c *l2cap) Close() error {
+	if !c.serving {
+		return errors.New("not serving")
+	}
+	c.serving = false
+	close(c.quit)
+	return nil
 }
 
 func (c *l2cap) listenAndServe() error {
@@ -126,11 +162,7 @@ func (c *l2cap) eventloop() error {
 			if err != nil {
 				return err
 			}
-			if rsp := c.server.conn.handleReq(req); rsp != nil {
-				if err := c.send(rsp); err != nil {
-					return err
-				}
-			}
+			c.readc <- req
 		}
 	}
 }
@@ -141,16 +173,4 @@ func (c *l2cap) disconnect() error {
 
 func (c *l2cap) updateRSSI() error {
 	return c.shim.Signal(syscall.SIGUSR1)
-}
-
-func (c *l2cap) send(b []byte) error {
-	if len(b) > int(c.server.conn.mtu) {
-		panic(fmt.Errorf("cannot send %x: mtu %d", b, c.server.conn.mtu))
-	}
-
-	// log.Printf("L2CAP: Sending %x", b)
-	c.sendmu.Lock()
-	_, err := fmt.Fprintf(c.shim, "%x\n", b)
-	c.sendmu.Unlock()
-	return err
 }
