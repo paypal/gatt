@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 )
 
 type security int
@@ -21,9 +22,10 @@ type conn struct {
 	rssi       int
 	mtu        uint16
 	security   security
+	l2conn     io.ReadWriteCloser
 }
 
-func newConn(server *Server, addr BDAddr) *conn {
+func newConn(server *Server, l2conn io.ReadWriteCloser, addr BDAddr) *conn {
 	return &conn{
 		server:     server,
 		rssi:       -1,
@@ -31,19 +33,40 @@ func newConn(server *Server, addr BDAddr) *conn {
 		remoteAddr: addr,
 		mtu:        23,
 		security:   securityLow,
+		l2conn:     l2conn,
 	}
 }
 
 func (c *conn) String() string     { return c.remoteAddr.String() }
 func (c *conn) LocalAddr() BDAddr  { return c.localAddr }
 func (c *conn) RemoteAddr() BDAddr { return c.remoteAddr }
-func (c *conn) Close() error       { return c.server.disconnect(c) }
-func (c *conn) RSSI() int          { return c.rssi }
-func (c *conn) MTU() int           { return int(c.mtu) }
-
+func (c *conn) Close() error {
+	c.close()
+	c.l2conn.Close()
+	return nil
+}
+func (c *conn) RSSI() int { return c.rssi }
+func (c *conn) MTU() int  { return int(c.mtu) }
 func (c *conn) UpdateRSSI() (rssi int, err error) {
 	// TODO
 	return 0, errors.New("not implemented yet")
+}
+func (c *conn) close() error {
+	return nil
+}
+
+func (c *conn) loop() {
+	b := make([]byte, 672)
+	for {
+		n, err := c.l2conn.Read(b)
+		if n == 0 || err != nil {
+			break
+		}
+		if rsp := c.handleReq(b[:n]); rsp != nil {
+			c.l2conn.Write(rsp)
+		}
+	}
+	c.close()
 }
 
 // handleReq dispatches a raw request from the conn shim
@@ -424,13 +447,13 @@ func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 	return []byte{attOpWriteResp}
 }
 
-func (c *conn) sendNotification(char *Characteristic, data []byte) error {
+func (c *conn) sendNotification(char *Characteristic, data []byte) (int, error) {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpHandleNotify)
 	w.WriteUint16Fit(char.valuen)
 	w.WriteFit(data)
 	b := w.Bytes()
-	return c.server.l2cap.send(b)
+	return c.l2conn.Write(b)
 }
 
 func readHandleRange(b []byte) (start, end uint16) {
