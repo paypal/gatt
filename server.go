@@ -79,15 +79,6 @@ type Server struct {
 
 	addr BDAddr
 
-	// For now, there is one active conn per server; stash it here.
-	// The conn part of the API is for forward-compatibility.
-	// When Bluetooth 4.1 hits, there may be multiple active
-	// connections per server, at which point, we'll need to
-	// thread the connection through at each event. We won't
-	// be able to do that without l2cap/BlueZ support, though.
-	connmu sync.RWMutex
-	conn   *conn
-
 	services []*Service
 	handles  *handleRange
 
