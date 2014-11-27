@@ -301,15 +301,7 @@ func (s *Server) connected(addr net.HardwareAddr) {
 func (s *Server) disconnected(hw net.HardwareAddr) {
 	// Stop all notifiers
 	// TODO: Clear all descriptor CCC values?
-	for _, svc := range s.services {
-		for _, char := range svc.chars {
-			if char.notifier != nil {
-				char.notifier.stop()
-				char.notifier = nil
-			}
-		}
-	}
-
+	s.conn.close()
 	if s.Disconnect != nil {
 		s.Disconnect(s.conn)
 	}

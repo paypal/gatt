@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 type security int
@@ -16,24 +17,28 @@ const (
 )
 
 type conn struct {
-	server     *Server
-	localAddr  BDAddr
-	remoteAddr BDAddr
-	rssi       int
-	mtu        uint16
-	security   security
-	l2conn     io.ReadWriteCloser
+	server      *Server
+	localAddr   BDAddr
+	remoteAddr  BDAddr
+	rssi        int
+	mtu         uint16
+	security    security
+	l2conn      io.ReadWriteCloser
+	notifiers   map[*Characteristic]*notifier
+	notifiersmu *sync.Mutex
 }
 
 func newConn(server *Server, l2conn io.ReadWriteCloser, addr BDAddr) *conn {
 	return &conn{
-		server:     server,
-		rssi:       -1,
-		localAddr:  server.addr,
-		remoteAddr: addr,
-		mtu:        23,
-		security:   securityLow,
-		l2conn:     l2conn,
+		server:      server,
+		rssi:        -1,
+		localAddr:   server.addr,
+		remoteAddr:  addr,
+		mtu:         23,
+		security:    securityLow,
+		l2conn:      l2conn,
+		notifiers:   make(map[*Characteristic]*notifier),
+		notifiersmu: &sync.Mutex{},
 	}
 }
 
@@ -56,6 +61,13 @@ func (c *conn) UpdateRSSI() (rssi int, err error) {
 	return 0, errors.New("not implemented yet")
 }
 func (c *conn) close() error {
+	// Stop all notifiers
+	// TODO: Clear all descriptor CCC values?
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	for _, n := range c.notifiers {
+		n.stop()
+	}
 	return nil
 }
 
@@ -486,14 +498,21 @@ func (c *conn) writeChar(char *Characteristic, data []byte, noResponse bool) (st
 }
 
 func (c *conn) startNotify(char *Characteristic, maxlen int) {
-	if char.notifier != nil {
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	if _, found := c.notifiers[char]; found {
 		return
 	}
-	char.notifier = newNotifier(c.server.l2cap, char, maxlen)
-	char.nhandler.ServeNotify(c.request(char), char.notifier)
+	n := newNotifier(c, char, maxlen)
+	c.notifiers[char] = n
+	char.nhandler.ServeNotify(c.request(char), n)
 }
 
 func (c *conn) stopNotify(char *Characteristic) {
-	char.notifier.stop()
-	char.notifier = nil
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	if n, found := c.notifiers[char]; found {
+		n.stop()
+		delete(c.notifiers, char)
+	}
 }
