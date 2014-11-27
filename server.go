@@ -240,6 +240,13 @@ func (s *Server) Close() error {
 	return err
 }
 
+func (s *Server) close(err error) {
+	s.quitonce.Do(func() {
+		s.err = err
+		close(s.quit)
+	})
+}
+
 // A BDAddr (Bluetooth Device Address) is a
 // hardware-addressed-based net.Addr.
 type BDAddr struct {
@@ -270,11 +277,10 @@ type Conn interface {
 
 	// MTU returns the current connection mtu.
 	MTU() int
-}
 
-func (s *Server) close(err error) {
-	s.quitonce.Do(func() {
-		s.err = err
-		close(s.quit)
-	})
+	// SetPrivateData sets an optional user defined data
+	SetPrivateData(interface{})
+
+	// PrivateData returns the user defined data, if assigned.
+	PrivateData() interface{}
 }
