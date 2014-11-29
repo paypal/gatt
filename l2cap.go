@@ -221,7 +221,7 @@ func (c *l2cap) handleMTU(b []byte) []byte {
 	if c.mtu < 23 {
 		c.mtu = 23
 	}
-	return []byte{attOpMtuResp, b[0], b[1]}
+	return []byte{attOpMtuResp, uint8(c.mtu), uint8(c.mtu >> 8)}
 }
 
 func (c *l2cap) handleFindInfo(b []byte) []byte {
