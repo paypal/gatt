@@ -38,7 +38,7 @@ func TestL2capWriterChunk(t *testing.T) {
 		}
 		ok := w.Commit()
 		if ok != tt.ok {
-			t.Errorf("Chunk(%d %d %d) commit: got %b want %b", tt.mtu, tt.head, tt.chunk, ok, tt.ok)
+			t.Errorf("Chunk(%d %d %d) commit: got %t want %t", tt.mtu, tt.head, tt.chunk, ok, tt.ok)
 			continue
 		}
 		if !bytes.Equal(want, w.Bytes()) {
