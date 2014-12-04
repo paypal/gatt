@@ -52,9 +52,11 @@ func generateHandles(name string, svcs []*Service, base uint16) *handleRange {
 	svcs = append(defaultServices(name), svcs...)
 	var handles []handle
 	n := base
-	for _, svc := range svcs {
+
+	last := len(svcs) - 1
+	for i, svc := range svcs {
 		var hh []handle
-		n, hh = svc.generateHandles(n)
+		n, hh = svc.generateHandles(n, i == last)
 		handles = append(handles, hh...)
 	}
 
