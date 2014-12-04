@@ -29,7 +29,7 @@ func (s *Service) AddCharacteristic(u UUID) *Characteristic {
 
 func (s *Service) generateHandles(n uint16) (uint16, []handle) {
 	h := handle{
-		typ:    "service",
+		typ:    typService,
 		n:      n,
 		uuid:   s.uuid,
 		attr:   s,

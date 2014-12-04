@@ -181,7 +181,7 @@ func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
 	var handles []handle
 
 	h = handle{
-		typ:    "characteristic",
+		typ:    typCharacteristic,
 		n:      n,
 		uuid:   c.uuid,
 		props:  c.props,
@@ -195,7 +195,7 @@ func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
 	n++
 	c.valuen = n
 	h = handle{
-		typ:   "characteristicValue",
+		typ:   typCharacteristicValue,
 		uuid:  c.uuid, // copy from the characteristic
 		n:     n,
 		value: c.value,
@@ -213,7 +213,7 @@ func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
 			secure = charRead | charWrite
 		}
 		h = handle{
-			typ:    "descriptor",
+			typ:    typDescriptor,
 			n:      cccn,
 			uuid:   gattAttrClientCharacteristicConfigUUID,
 			attr:   c,

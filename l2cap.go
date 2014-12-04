@@ -246,13 +246,13 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	for _, h := range c.handles.Subrange(start, end) {
 		var uuid UUID
 		switch h.typ {
-		case "service":
+		case typService:
 			uuid = gattAttrPrimaryServiceUUID
-		case "includedService":
+		case typIncludedService:
 			uuid = gattAttrSecondaryServiceUUID
-		case "characteristic":
+		case typCharacteristic:
 			uuid = gattAttrCharacteristicUUID
-		case "characteristicValue", "descriptor":
+		case typCharacteristicValue, typDescriptor:
 			uuid = h.uuid
 		default:
 			continue
@@ -327,7 +327,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 		w.WriteByte(attOpReadByTypeResp)
 		uuidLen := -1
 		for _, h := range c.handles.Subrange(start, end) {
-			if h.typ != "characteristic" {
+			if h.typ != typCharacteristic {
 				continue
 			}
 			if uuidLen == -1 {
@@ -415,15 +415,15 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	w.Chunk()
 
 	switch h.typ {
-	case "service", "includedService":
+	case typService, typIncludedService:
 		w.WriteUUID(h.uuid)
-	case "characteristic":
+	case typCharacteristic:
 		w.WriteByte(byte(h.props))
 		w.WriteUint16(h.valuen)
 		w.WriteUUID(h.uuid)
-	case "characteristicValue", "descriptor":
+	case typCharacteristicValue, typDescriptor:
 		valueh := h
-		if h.typ == "characteristicValue" {
+		if h.typ == typCharacteristicValue {
 			vh, ok := c.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
 			if !ok {
 				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
@@ -465,12 +465,12 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
-	var typ string
+	var typ handleType
 	switch {
 	case uuidEqual(uuid, gattAttrPrimaryServiceUUID):
-		typ = "service"
+		typ = typService
 	case uuidEqual(uuid, gattAttrIncludeUUID):
-		typ = "includedService"
+		typ = typIncludedService
 	default:
 		return attErr{opcode: attOpReadByGroupReq, handle: start, status: attEcodeUnsuppGrpType}.Marshal()
 	}
@@ -513,7 +513,7 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
 	}
 
-	if h.typ == "characteristicValue" {
+	if h.typ == typCharacteristicValue {
 		vh, ok := c.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
 		if !ok {
 			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
@@ -534,7 +534,7 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 		return attErr{opcode: reqType, handle: valuen, status: attEcodeAuthentication}.Marshal()
 	}
 
-	if h.typ != "descriptor" && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
+	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
 		// Regular write, not CCC
 		result := c.handler.writeChar(h.attr.(*Characteristic), data, noResp)
 		if noResp {
