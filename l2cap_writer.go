@@ -5,7 +5,7 @@ import "encoding/binary"
 // l2capWriter helps create l2cap responses.
 // It is not meant to be used with large writes.
 // TODO: benchmark the number of allocs here.
-// Reduce by letting WriteByte, WriteUint16, etc.
+// Reduce by letting WriteByteFit, WriteUint16Fit, etc.
 // extend b/chunk and write into it directly.
 type l2capWriter struct {
 	mtu     int
@@ -65,26 +65,26 @@ func (w *l2capWriter) CommitFit() {
 	w.chunked = false
 }
 
-// WriteByte writes b.
+// WriteByteFit writes b.
 // It reports whether the write succeeded,
 // using the criteria of WriteFit.
-func (w *l2capWriter) WriteByte(b byte) bool {
+func (w *l2capWriter) WriteByteFit(b byte) bool {
 	return w.WriteFit([]byte{b})
 }
 
-// WriteUint16 writes v using BLE (LittleEndian) encoding.
+// WriteUint16Fit writes v using BLE (LittleEndian) encoding.
 // It reports whether the write succeeded, using the
 // criteria of WriteFit.
-func (w *l2capWriter) WriteUint16(v uint16) bool {
+func (w *l2capWriter) WriteUint16Fit(v uint16) bool {
 	b := make([]byte, 2)
 	binary.LittleEndian.PutUint16(b, v)
 	return w.WriteFit(b)
 }
 
-// WriteUUID writes uuid using BLE (reversed) encoding.
+// WriteUUIDFit writes uuid using BLE (reversed) encoding.
 // It reports whether the write succeeded, using the
 // criteria of WriteFit.
-func (w *l2capWriter) WriteUUID(u UUID) bool {
+func (w *l2capWriter) WriteUUIDFit(u UUID) bool {
 	return w.WriteFit(u.reverseBytes())
 }
 

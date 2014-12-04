@@ -228,7 +228,7 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpFindInfoResp)
+	w.WriteByteFit(attOpFindInfoResp)
 	uuidLen := -1
 	for _, h := range c.handles.Subrange(start, end) {
 		var uuid UUID
@@ -248,9 +248,9 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 		if uuidLen == -1 {
 			uuidLen = uuid.Len()
 			if uuidLen == 2 {
-				w.WriteByte(0x01) // TODO: constants for 16bit vs 128bit uuid magic numbers here
+				w.WriteByteFit(0x01) // TODO: constants for 16bit vs 128bit uuid magic numbers here
 			} else {
-				w.WriteByte(0x02)
+				w.WriteByteFit(0x02)
 			}
 		}
 		if uuid.Len() != uuidLen {
@@ -258,8 +258,8 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 		}
 
 		w.Chunk()
-		w.WriteUint16(h.n)
-		w.WriteUUID(uuid)
+		w.WriteUint16Fit(h.n)
+		w.WriteUUIDFit(uuid)
 		if ok := w.Commit(); !ok {
 			break
 		}
@@ -281,7 +281,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	uuid := UUID{reverse(b[6:])}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpFindByTypeResp)
+	w.WriteByteFit(attOpFindByTypeResp)
 
 	var wrote bool
 	for _, h := range c.handles.Subrange(start, end) {
@@ -289,8 +289,8 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 			continue
 		}
 		w.Chunk()
-		w.WriteUint16(h.startn)
-		w.WriteUint16(h.endn)
+		w.WriteUint16Fit(h.startn)
+		w.WriteUint16Fit(h.endn)
 		if ok := w.Commit(); !ok {
 			break
 		}
@@ -311,7 +311,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	// TODO: Refactor out into two extra helper handle* functions?
 	if uuidEqual(uuid, gattAttrCharacteristicUUID) {
 		w := newL2capWriter(c.mtu)
-		w.WriteByte(attOpReadByTypeResp)
+		w.WriteByteFit(attOpReadByTypeResp)
 		uuidLen := -1
 		for _, h := range c.handles.Subrange(start, end) {
 			if h.typ != typCharacteristic {
@@ -319,16 +319,16 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 			}
 			if uuidLen == -1 {
 				uuidLen = h.uuid.Len()
-				w.WriteByte(byte(uuidLen + 5))
+				w.WriteByteFit(byte(uuidLen + 5))
 			}
 			if h.uuid.Len() != uuidLen {
 				break
 			}
 			w.Chunk()
-			w.WriteUint16(h.startn)
-			w.WriteByte(byte(h.props))
-			w.WriteUint16(h.valuen)
-			w.WriteUUID(h.uuid)
+			w.WriteUint16Fit(h.startn)
+			w.WriteByteFit(byte(h.props))
+			w.WriteUint16Fit(h.valuen)
+			w.WriteUUIDFit(h.uuid)
 			if ok := w.Commit(); !ok {
 				break
 			}
@@ -375,9 +375,9 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	}
 	w := newL2capWriter(c.mtu)
 	datalen := w.Writeable(4, valueh.value)
-	w.WriteByte(attOpReadByTypeResp)
-	w.WriteByte(byte(datalen + 2))
-	w.WriteUint16(valuen)
+	w.WriteByteFit(attOpReadByTypeResp)
+	w.WriteByteFit(byte(datalen + 2))
+	w.WriteUint16Fit(valuen)
 	w.WriteFit(valueh.value)
 
 	return w.Bytes()
@@ -398,16 +398,16 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(respType)
+	w.WriteByteFit(respType)
 	w.Chunk()
 
 	switch h.typ {
 	case typService, typIncludedService:
-		w.WriteUUID(h.uuid)
+		w.WriteUUIDFit(h.uuid)
 	case typCharacteristic:
-		w.WriteByte(byte(h.props))
-		w.WriteUint16(h.valuen)
-		w.WriteUUID(h.uuid)
+		w.WriteByteFit(byte(h.props))
+		w.WriteUint16Fit(h.valuen)
+		w.WriteUUIDFit(h.uuid)
 	case typCharacteristicValue, typDescriptor:
 		valueh := h
 		if h.typ == typCharacteristicValue {
@@ -463,7 +463,7 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpReadByGroupResp)
+	w.WriteByteFit(attOpReadByGroupResp)
 	uuidLen := -1
 	for _, h := range c.handles.Subrange(start, end) {
 		if h.typ != typ {
@@ -471,15 +471,15 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 		}
 		if uuidLen == -1 {
 			uuidLen = h.uuid.Len()
-			w.WriteByte(byte(uuidLen + 4))
+			w.WriteByteFit(byte(uuidLen + 4))
 		}
 		if uuidLen != h.uuid.Len() {
 			break
 		}
 		w.Chunk()
-		w.WriteUint16(h.startn)
-		w.WriteUint16(h.endn)
-		w.WriteUUID(h.uuid)
+		w.WriteUint16Fit(h.startn)
+		w.WriteUint16Fit(h.endn)
+		w.WriteUUIDFit(h.uuid)
 		if ok := w.Commit(); !ok {
 			break
 		}
@@ -560,8 +560,8 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 func (c *l2cap) sendNotification(char *Characteristic, data []byte) error {
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpHandleNotify)
-	w.WriteUint16(char.valuen)
+	w.WriteByteFit(attOpHandleNotify)
+	w.WriteUint16Fit(char.valuen)
 	w.WriteFit(data)
 	b := w.Bytes()
 	return c.send(b)
