@@ -1,5 +1,15 @@
 package gatt
 
+type handleType int
+
+const (
+	typService handleType = iota
+	typCharacteristic
+	typDescriptor
+	typCharacteristicValue
+	typIncludedService
+)
+
 // handle is a BLE handle. It is not exported;
 // managing handles is an implementation detail.
 // TODO: The organization of this is borrowed
@@ -12,7 +22,7 @@ type handle struct {
 	startn uint16
 	valuen uint16
 	endn   uint16
-	typ    string
+	typ    handleType
 	uuid   UUID
 	attr   interface{}
 	props  uint
@@ -23,28 +33,30 @@ type handle struct {
 // isPrimaryService reports whether this handle is
 // the primary service with uuid uuid.
 func (h handle) isPrimaryService(uuid UUID) bool {
-	return h.typ == "service" && uuidEqual(uuid, h.uuid)
+	return h.typ == typService && uuidEqual(uuid, h.uuid)
 }
 
 // isCharacteristic reports whether this handle is the
 // characteristic with uuid uuid.
 func (h handle) isCharacteristic(uuid UUID) bool {
-	return h.typ == "characteristic" && uuidEqual(uuid, h.uuid)
+	return h.typ == typCharacteristic && uuidEqual(uuid, h.uuid)
 }
 
 // isDescriptor reports whether this handle is the
 // descriptor with uuid uuid.
 func (h handle) isDescriptor(uuid UUID) bool {
-	return h.typ == "descriptor" && uuidEqual(uuid, h.uuid)
+	return h.typ == typDescriptor && uuidEqual(uuid, h.uuid)
 }
 
 func generateHandles(name string, svcs []*Service, base uint16) *handleRange {
 	svcs = append(defaultServices(name), svcs...)
 	var handles []handle
 	n := base
-	for _, svc := range svcs {
+
+	last := len(svcs) - 1
+	for i, svc := range svcs {
 		var hh []handle
-		n, hh = svc.generateHandles(n)
+		n, hh = svc.generateHandles(n, i == last)
 		handles = append(handles, hh...)
 	}
 

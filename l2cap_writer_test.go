@@ -26,19 +26,19 @@ func TestL2capWriterChunk(t *testing.T) {
 		w := newL2capWriter(tt.mtu)
 		var want []byte
 		for i := 0; i < tt.head; i++ {
-			w.WriteByte(byte(i))
+			w.WriteByteFit(byte(i))
 			want = append(want, byte(i))
 		}
 		w.Chunk()
 		for i := 0; i < tt.chunk; i++ {
-			w.WriteByte(byte(i))
+			w.WriteByteFit(byte(i))
 			if tt.ok {
 				want = append(want, byte(i))
 			}
 		}
 		ok := w.Commit()
 		if ok != tt.ok {
-			t.Errorf("Chunk(%d %d %d) commit: got %b want %b", tt.mtu, tt.head, tt.chunk, ok, tt.ok)
+			t.Errorf("Chunk(%d %d %d) commit: got %t want %t", tt.mtu, tt.head, tt.chunk, ok, tt.ok)
 			continue
 		}
 		if !bytes.Equal(want, w.Bytes()) {
@@ -74,6 +74,6 @@ func TestL2capWriterPanicDoubleCommit(t *testing.T) {
 func BenchmarkWriteUint16(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := newL2capWriter(17)
-		w.WriteUint16(0)
+		w.WriteUint16Fit(0)
 	}
 }

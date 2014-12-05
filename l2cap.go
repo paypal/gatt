@@ -180,19 +180,6 @@ func (c *l2cap) send(b []byte) error {
 	return err
 }
 
-type attErr struct {
-	opcode uint8
-	handle uint16
-	status uint8
-}
-
-// TODO: Reformulate in a way that lets the caller avoid allocs.
-// Accept a []byte? Write directly to an io.Writer?
-func (e attErr) Marshal() []byte {
-	// little-endian encoding for handle
-	return []byte{attOpError, e.opcode, byte(e.handle), byte(e.handle >> 8), e.status}
-}
-
 // handleReq dispatches a raw request from the l2cap shim
 // to an appropriate handler, based on its type.
 // It panics if len(b) == 0.
@@ -217,7 +204,7 @@ func (c *l2cap) handleReq(b []byte) error {
 	case attOpReadMultiReq, attOpPrepWriteReq, attOpExecWriteReq, attOpSignedWriteCmd:
 		fallthrough
 	default:
-		resp = attErr{opcode: reqType, handle: 0x0000, status: attEcodeReqNotSupp}.Marshal()
+		resp = attErrorResp(reqType, 0x0000, attEcodeReqNotSupp)
 	}
 
 	return c.send(resp)
@@ -241,18 +228,18 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpFindInfoResp)
+	w.WriteByteFit(attOpFindInfoResp)
 	uuidLen := -1
 	for _, h := range c.handles.Subrange(start, end) {
 		var uuid UUID
 		switch h.typ {
-		case "service":
+		case typService:
 			uuid = gattAttrPrimaryServiceUUID
-		case "includedService":
+		case typIncludedService:
 			uuid = gattAttrSecondaryServiceUUID
-		case "characteristic":
+		case typCharacteristic:
 			uuid = gattAttrCharacteristicUUID
-		case "characteristicValue", "descriptor":
+		case typCharacteristicValue, typDescriptor:
 			uuid = h.uuid
 		default:
 			continue
@@ -261,9 +248,9 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 		if uuidLen == -1 {
 			uuidLen = uuid.Len()
 			if uuidLen == 2 {
-				w.WriteByte(0x01) // TODO: constants for 16bit vs 128bit uuid magic numbers here
+				w.WriteByteFit(0x01) // TODO: constants for 16bit vs 128bit uuid magic numbers here
 			} else {
-				w.WriteByte(0x02)
+				w.WriteByteFit(0x02)
 			}
 		}
 		if uuid.Len() != uuidLen {
@@ -271,15 +258,15 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 		}
 
 		w.Chunk()
-		w.WriteUint16(h.n)
-		w.WriteUUID(uuid)
+		w.WriteUint16Fit(h.n)
+		w.WriteUUIDFit(uuid)
 		if ok := w.Commit(); !ok {
 			break
 		}
 	}
 
 	if uuidLen == -1 {
-		return attErr{opcode: attOpFindInfoReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindInfoReq, start, attEcodeAttrNotFound)
 	}
 	return w.Bytes()
 }
@@ -288,13 +275,13 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	if uuid := (UUID{reverse(b[4:6])}); !uuidEqual(uuid, gattAttrPrimaryServiceUUID) {
-		return attErr{opcode: attOpFindByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindByTypeReq, start, attEcodeAttrNotFound)
 	}
 
 	uuid := UUID{reverse(b[6:])}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpFindByTypeResp)
+	w.WriteByteFit(attOpFindByTypeResp)
 
 	var wrote bool
 	for _, h := range c.handles.Subrange(start, end) {
@@ -302,8 +289,8 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 			continue
 		}
 		w.Chunk()
-		w.WriteUint16(h.startn)
-		w.WriteUint16(h.endn)
+		w.WriteUint16Fit(h.startn)
+		w.WriteUint16Fit(h.endn)
 		if ok := w.Commit(); !ok {
 			break
 		}
@@ -311,7 +298,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	}
 
 	if !wrote {
-		return attErr{opcode: attOpFindByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpFindByTypeReq, start, attEcodeAttrNotFound)
 	}
 
 	return w.Bytes()
@@ -324,30 +311,30 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	// TODO: Refactor out into two extra helper handle* functions?
 	if uuidEqual(uuid, gattAttrCharacteristicUUID) {
 		w := newL2capWriter(c.mtu)
-		w.WriteByte(attOpReadByTypeResp)
+		w.WriteByteFit(attOpReadByTypeResp)
 		uuidLen := -1
 		for _, h := range c.handles.Subrange(start, end) {
-			if h.typ != "characteristic" {
+			if h.typ != typCharacteristic {
 				continue
 			}
 			if uuidLen == -1 {
 				uuidLen = h.uuid.Len()
-				w.WriteByte(byte(uuidLen + 5))
+				w.WriteByteFit(byte(uuidLen + 5))
 			}
 			if h.uuid.Len() != uuidLen {
 				break
 			}
 			w.Chunk()
-			w.WriteUint16(h.startn)
-			w.WriteByte(byte(h.props))
-			w.WriteUint16(h.valuen)
-			w.WriteUUID(h.uuid)
+			w.WriteUint16Fit(h.startn)
+			w.WriteByteFit(byte(h.props))
+			w.WriteUint16Fit(h.valuen)
+			w.WriteUUIDFit(h.uuid)
 			if ok := w.Commit(); !ok {
 				break
 			}
 		}
 		if uuidLen == -1 {
-			return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+			return attErrorResp(attOpReadByTypeReq, start, attEcodeAttrNotFound)
 		}
 		return w.Bytes()
 	}
@@ -374,10 +361,10 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	}
 
 	if !found {
-		return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpReadByTypeReq, start, attEcodeAttrNotFound)
 	}
 	if secure && c.security > securityLow {
-		return attErr{opcode: attOpReadByTypeReq, handle: start, status: attEcodeAuthentication}.Marshal()
+		return attErrorResp(attOpReadByTypeReq, start, attEcodeAuthentication)
 	}
 
 	valueh, ok := c.handles.At(valuen)
@@ -388,9 +375,9 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	}
 	w := newL2capWriter(c.mtu)
 	datalen := w.Writeable(4, valueh.value)
-	w.WriteByte(attOpReadByTypeResp)
-	w.WriteByte(byte(datalen + 2))
-	w.WriteUint16(valuen)
+	w.WriteByteFit(attOpReadByTypeResp)
+	w.WriteByteFit(byte(datalen + 2))
+	w.WriteUint16Fit(valuen)
 	w.WriteFit(valueh.value)
 
 	return w.Bytes()
@@ -407,23 +394,23 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 
 	h, ok := c.handles.At(valuen)
 	if !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(respType)
+	w.WriteByteFit(respType)
 	w.Chunk()
 
 	switch h.typ {
-	case "service", "includedService":
-		w.WriteUUID(h.uuid)
-	case "characteristic":
-		w.WriteByte(byte(h.props))
-		w.WriteUint16(h.valuen)
-		w.WriteUUID(h.uuid)
-	case "characteristicValue", "descriptor":
+	case typService, typIncludedService:
+		w.WriteUUIDFit(h.uuid)
+	case typCharacteristic:
+		w.WriteByteFit(byte(h.props))
+		w.WriteUint16Fit(h.valuen)
+		w.WriteUUIDFit(h.uuid)
+	case typCharacteristicValue, typDescriptor:
 		valueh := h
-		if h.typ == "characteristicValue" {
+		if h.typ == typCharacteristicValue {
 			vh, ok := c.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
 			if !ok {
 				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
@@ -431,10 +418,10 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 			valueh = vh
 		}
 		if valueh.props&charRead == 0 {
-			return attErr{opcode: reqType, handle: valuen, status: attEcodeReadNotPerm}.Marshal()
+			return attErrorResp(reqType, valuen, attEcodeReadNotPerm)
 		}
 		if valueh.secure&charRead != 0 && c.security > securityLow {
-			return attErr{opcode: reqType, handle: valuen, status: attEcodeAuthentication}.Marshal()
+			return attErrorResp(reqType, valuen, attEcodeAuthentication)
 		}
 		if h.value != nil {
 			w.WriteFit(h.value)
@@ -443,18 +430,18 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
 			data, status := c.handler.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
-				return attErr{opcode: reqType, handle: valuen, status: byte(status)}.Marshal()
+				return attErrorResp(reqType, valuen, byte(status))
 			}
 			w.WriteFit(data)
 			offset = 0 // the handler has already adjusted for the offset
 		}
 	default:
 		// Shouldn't happen?
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if ok := w.ChunkSeek(offset); !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidOffset}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidOffset)
 	}
 
 	w.CommitFit()
@@ -465,18 +452,18 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
-	var typ string
+	var typ handleType
 	switch {
 	case uuidEqual(uuid, gattAttrPrimaryServiceUUID):
-		typ = "service"
+		typ = typService
 	case uuidEqual(uuid, gattAttrIncludeUUID):
-		typ = "includedService"
+		typ = typIncludedService
 	default:
-		return attErr{opcode: attOpReadByGroupReq, handle: start, status: attEcodeUnsuppGrpType}.Marshal()
+		return attErrorResp(attOpReadByGroupReq, start, attEcodeUnsuppGrpType)
 	}
 
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpReadByGroupResp)
+	w.WriteByteFit(attOpReadByGroupResp)
 	uuidLen := -1
 	for _, h := range c.handles.Subrange(start, end) {
 		if h.typ != typ {
@@ -484,21 +471,21 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 		}
 		if uuidLen == -1 {
 			uuidLen = h.uuid.Len()
-			w.WriteByte(byte(uuidLen + 4))
+			w.WriteByteFit(byte(uuidLen + 4))
 		}
 		if uuidLen != h.uuid.Len() {
 			break
 		}
 		w.Chunk()
-		w.WriteUint16(h.startn)
-		w.WriteUint16(h.endn)
-		w.WriteUUID(h.uuid)
+		w.WriteUint16Fit(h.startn)
+		w.WriteUint16Fit(h.endn)
+		w.WriteUUIDFit(h.uuid)
 		if ok := w.Commit(); !ok {
 			break
 		}
 	}
 	if uuidLen == -1 {
-		return attErr{opcode: attOpReadByGroupReq, handle: start, status: attEcodeAttrNotFound}.Marshal()
+		return attErrorResp(attOpReadByGroupReq, start, attEcodeAttrNotFound)
 	}
 
 	return w.Bytes()
@@ -510,10 +497,10 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	h, ok := c.handles.At(valuen)
 	if !ok {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalidHandle}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
-	if h.typ == "characteristicValue" {
+	if h.typ == typCharacteristicValue {
 		vh, ok := c.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
 		if !ok {
 			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
@@ -528,27 +515,27 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 	}
 
 	if h.props&charFlag == 0 {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeWriteNotPerm}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeWriteNotPerm)
 	}
 	if h.secure&charFlag == 0 && c.security > securityLow {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeAuthentication}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeAuthentication)
 	}
 
-	if h.typ != "descriptor" && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
+	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
 		// Regular write, not CCC
 		result := c.handler.writeChar(h.attr.(*Characteristic), data, noResp)
 		if noResp {
 			return nil
 		}
 		if result != StatusSuccess {
-			return attErr{opcode: reqType, handle: valuen, status: byte(result)}.Marshal()
+			return attErrorResp(reqType, valuen, byte(result))
 		}
 		return []byte{attOpWriteResp}
 	}
 
 	// CCC/descriptor write
 	if len(data) != 2 {
-		return attErr{opcode: reqType, handle: valuen, status: attEcodeInvalAttrValueLen}.Marshal()
+		return attErrorResp(reqType, valuen, attEcodeInvalAttrValueLen)
 	}
 
 	ccc := binary.LittleEndian.Uint16(data)
@@ -573,8 +560,8 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 func (c *l2cap) sendNotification(char *Characteristic, data []byte) error {
 	w := newL2capWriter(c.mtu)
-	w.WriteByte(attOpHandleNotify)
-	w.WriteUint16(char.valuen)
+	w.WriteByteFit(attOpHandleNotify)
+	w.WriteUint16Fit(char.valuen)
 	w.WriteFit(data)
 	b := w.Bytes()
 	return c.send(b)

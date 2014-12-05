@@ -7,7 +7,7 @@ type desc struct {
 
 func (d *desc) handle(n uint16) handle {
 	return handle{
-		typ:    "descriptor",
+		typ:    typDescriptor,
 		n:      n,
 		uuid:   d.uuid,
 		attr:   d,
