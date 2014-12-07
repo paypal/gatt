@@ -35,6 +35,7 @@ type Server struct {
 	handles  *handleRange
 	serving  bool
 	quit     chan struct{}
+	inited   chan struct{}
 	err      error
 
 	adv advertiser
@@ -44,7 +45,7 @@ type Server struct {
 // See also Server.Options.
 // See http://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis for more discussion.
 func NewServer(opts ...option) *Server {
-	s := &Server{}
+	s := &Server{maxConnections: 1, inited: make(chan struct{})}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -64,16 +65,19 @@ func (s *Server) AddService(u UUID) *Service {
 
 // Advertise starts advertising.
 func (s *Server) Advertise() {
+	<-s.inited
 	s.adv.Start()
 }
 
 // StopAdvertising stops advertising.
 func (s *Server) StopAdvertising() {
+	<-s.inited
 	s.adv.Stop()
 }
 
 // Advertising reports whether the server is advertising.
 func (s *Server) Advertising() bool {
+	<-s.inited
 	return s.adv.Serving()
 }
 
@@ -87,6 +91,7 @@ func (s *Server) AdvertiseAndServe() error {
 	}
 	s.serving = true
 	s.adv.Start()
+	close(s.inited)
 	<-s.quit
 	return s.err
 }
@@ -100,6 +105,7 @@ func (s *Server) Serve() error {
 		return err
 	}
 	s.serving = true
+	close(s.inited)
 	<-s.quit
 	return s.err
 }
