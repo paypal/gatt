@@ -27,7 +27,6 @@ func NewAdvertiser(c *cmd.Cmd) *advertiser {
 		advertisingIntervalMax: 0x0800,
 		advertisingChannelMap:  7,
 
-		serving:   false,
 		servingmu: &sync.RWMutex{},
 
 		cmd: c,
@@ -115,6 +114,7 @@ func (a *advertiser) Option(opts ...Option) (prev Option) {
 	for _, opt := range opts {
 		prev = opt(a)
 	}
+	a.AdvertiseService()
 	return prev
 }
 

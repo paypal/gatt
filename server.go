@@ -26,6 +26,10 @@ type Server struct {
 	stateChange    func(newState string)
 	maxConnections int
 
+	advertisingPacket  []byte
+	scanResponsePacket []byte
+	manufacturerData   []byte
+
 	addr     BDAddr
 	services []*Service
 	handles  *handleRange
@@ -78,12 +82,6 @@ func (s *Server) AdvertiseAndServe() error {
 	if s.serving {
 		return errors.New("a server is already running")
 	}
-	go func() {
-		if err := s.SetAdvertisement(nil, nil); err != nil {
-			s.err = err
-			s.Close()
-		}
-	}()
 	if err := s.start(); err != nil {
 		return err
 	}
@@ -229,6 +227,50 @@ func MaxConnections(n int) option {
 		prev := s.maxConnections
 		s.maxConnections = n
 		return MaxConnections(prev)
+	}
+}
+
+// AdvertisingPacket is an optional custom advertising packet.
+// If nil, the advertising data will constructed to advertise
+// as many services as possible. The AdvertisingPacket must be no
+// longer than MaxAdvertisingPacketLength.
+// If ManufacturerData is also set, their total length must be no
+// longer than MaxAdvertisingPacketLength.
+// See also Server.NewServer and Server.Option.
+func AdvertisingPacket(b []byte) option {
+	return func(s *Server) option {
+		s.setAdvertisingPacket(b)
+		prev := s.advertisingPacket
+		s.advertisingPacket = b
+		return AdvertisingPacket(prev)
+	}
+}
+
+// ScanResponsePacket is an optional custom scan response packet.
+// If nil, the scan response packet will set to return the server
+// name, truncated if necessary. The ScanResponsePacket must be no
+// longer than MaxAdvertisingPacketLength.
+// See also Server.NewServer and Server.Option.
+func ScanResponsePacket(b []byte) option {
+	return func(s *Server) option {
+		s.setScanResponsePacket(b)
+		prev := s.scanResponsePacket
+		s.scanResponsePacket = b
+		return ScanResponsePacket(prev)
+	}
+}
+
+// ManufacturerData is an optional custom data.
+// If set, it will be appended in the advertising data.
+// The length of AdvertisingPacket ManufactureData must be no longer
+// than MaxAdvertisingPacketLength .
+// See also Server.NewServer and Server.Option.
+func ManufacturerData(b []byte) option {
+	return func(s *Server) option {
+		s.setManufacturerData(b)
+		prev := s.manufacturerData
+		s.manufacturerData = b
+		return ManufacturerData(prev)
 	}
 }
 

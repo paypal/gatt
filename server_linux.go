@@ -3,7 +3,6 @@ package gatt
 import (
 	"log"
 	"net"
-	"time"
 
 	"github.com/paypal/gatt/linux"
 )
@@ -14,9 +13,35 @@ type advertiser interface {
 	Start() error
 	Stop() error
 	AdvertiseService() error
-	Option(...linux.AdvertisingOption) linux.AdvertisingOption
+	Option(...linux.Option) linux.Option
 }
 
+// setDefaultAdvertisement builds advertisement data from the
+// UUIDs of services.
+func (s *Server) setDefaultAdvertisement() error {
+	opts := []linux.Option{
+		linux.AdvertisingIntervalMax(0x00f4),
+		linux.AdvertisingIntervalMin(0x00f4),
+		linux.AdvertisingChannelMap(0x7),
+	}
+	if len(s.advertisingPacket) == 0 {
+		u := []UUID{}
+		for _, svc := range s.services {
+			u = append(u, svc.uuid)
+		}
+		ad, _ := serviceAdvertisingPacket(u)
+		opts = append(opts, linux.AdvertisingPacket(ad))
+	}
+	if len(s.scanResponsePacket) == 0 {
+		opts = append(opts, linux.ScanResponsePacket(nameScanResponsePacket(s.name)))
+	}
+	s.adv.Option(opts...)
+	return s.adv.AdvertiseService()
+}
+
+// setAdvertisement builds advertisement data from the specified
+// UUIDs and optional manufacture data. If the UUIDs is set to
+// nil, the UUIDs of added services will be used instead.
 func (s *Server) setAdvertisement(u []UUID, m []byte) error {
 	if len(u) == 0 {
 		for _, svc := range s.services {
@@ -24,22 +49,31 @@ func (s *Server) setAdvertisement(u []UUID, m []byte) error {
 		}
 	}
 
-	// Wait until server is intitalized, or stopped
-	for !s.serving {
-		select {
-		case <-s.quit:
-			return nil
-		case <-time.After(time.Second):
-		}
-	}
-
-	ad, _ := ServiceAdvertisingPacket(u)
+	ad, _ := serviceAdvertisingPacket(u)
 	s.adv.Option(linux.AdvertisingIntervalMax(0x00f4),
 		linux.AdvertisingIntervalMin(0x00f4),
 		linux.AdvertisingChannelMap(0x7),
 		linux.AdvertisingPacket(ad),
-		linux.ScanResponse(NameScanResponsePacket(s.name)))
+		linux.ScanResponsePacket(nameScanResponsePacket(s.name)))
 	return s.adv.AdvertiseService()
+}
+
+func (s *Server) setAdvertisingPacket(b []byte) {
+	if s.serving {
+		s.adv.Option(linux.AdvertisingPacket(b))
+	}
+}
+
+func (s *Server) setScanResponsePacket(b []byte) {
+	if s.serving {
+		s.adv.Option(linux.ScanResponsePacket(b))
+	}
+}
+
+func (s *Server) setManufacturerData(b []byte) {
+	if s.serving {
+		s.adv.Option(linux.ManufacturerData(b))
+	}
 }
 
 func (s *Server) start() error {
@@ -81,5 +115,5 @@ func (s *Server) start() error {
 		}
 	}()
 	h.Start()
-	return nil
+	return s.setDefaultAdvertisement()
 }
