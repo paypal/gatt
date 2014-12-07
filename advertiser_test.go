@@ -22,7 +22,7 @@ func TestNameScanResponsePacket(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		pack := NameScanResponsePacket(tt.name)
+		pack := nameScanResponsePacket(tt.name)
 		if got := fmt.Sprintf("%x", pack); got != tt.want {
 			t.Errorf("nameScanResponsePacket(%q): got %q want %q", tt.name, got, tt.want)
 		}

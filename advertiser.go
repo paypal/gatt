@@ -1,8 +1,8 @@
 package gatt
 
-// NameScanResponsePacket constructs a scan response packet with
+// nameScanResponsePacket constructs a scan response packet with
 // the given name, truncated as necessary.
-func NameScanResponsePacket(name string) []byte {
+func nameScanResponsePacket(name string) []byte {
 	typ := byte(typeCompleteName)
 	if max := MaxEIRPacketLength - 2; len(name) > max {
 		name = name[:max]
@@ -13,12 +13,12 @@ func NameScanResponsePacket(name string) []byte {
 	return scan.data
 }
 
-// ServiceAdvertisingPacket constructs an advertising packet that
+// serviceAdvertisingPacket constructs an advertising packet that
 // advertises as many of the provided service uuids as possible.
 // It returns the advertising packet and the contained uuids.
 // Most clients do not need to call serviceAdvertisingPacket; the
 // server will automatically advertise as many of its services as possible.
-func ServiceAdvertisingPacket(uu []UUID) ([]byte, []UUID) {
+func serviceAdvertisingPacket(uu []UUID) ([]byte, []UUID) {
 	fit := make([]UUID, 0, len(uu))
 	adv := new(advPacket)
 	adv.appendField(typeFlags, []byte{flagGenerallyDiscoverable | flagLEOnly})
