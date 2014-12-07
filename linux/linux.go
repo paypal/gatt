@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"time"
 
 	"github.com/paypal/gatt/linux/internal/cmd"
 	"github.com/paypal/gatt/linux/internal/device"
@@ -31,7 +30,6 @@ type HCI struct {
 	l2c    *l2cap.L2CAP
 }
 
-func (h HCI) Dev() io.ReadWriter  { return h.dev }
 func (h HCI) Cmd() *cmd.Cmd       { return h.cmd }
 func (h HCI) Event() *event.Event { return h.evt }
 func (h HCI) L2CAP() *l2cap.L2CAP { return h.l2c }
@@ -69,36 +67,7 @@ func (h HCI) Close() error {
 
 func (h HCI) Start() error {
 	go h.mainLoop()
-	go monitorHCI(h, time.Second*30)
 	return h.ResetDevice()
-}
-
-type hciMonitor struct {
-	t time.Duration
-}
-
-func (m *hciMonitor) Timedout() {
-	log.Printf("hciMonitor: lost HCI connectivity for %v, restart violet!", m.Period())
-	// vlog.Fatalf("hciMonitor: lost HCI connectivity for %v, restart violet!", m.Period())
-}
-
-func (m *hciMonitor) Period() time.Duration {
-	return m.t
-}
-
-// monitorHCI monitors the status of the BLE controller
-func monitorHCI(h HCI, t time.Duration) {
-	// Send a HCI command to controller periodically.
-	// If the controller failed to respond, and block us from restting the watchdog timer,
-	// the timer will timeout and exit violet.
-	// var w watchdog.Watchdog
-	// w.Start(&hciMonitor{t})
-	// for _ = range time.Tick(time.Second * 10) {
-	// 	h.Cmd().SendAndCheckResp(cmd.LEReadBufferSize{}, []byte{0x00})
-	// 	vlog.Debugf("hciMonitor: reset HCI watchdog timer")
-	// 	log.Printf("hciMonitor: reset HCI watchdog timer")
-	// 	w.Reset()
-	// }
 }
 
 func (h HCI) mainLoop() {

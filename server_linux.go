@@ -1,10 +1,13 @@
 package gatt
 
 import (
+	"errors"
 	"log"
 	"net"
+	"time"
 
 	"github.com/paypal/gatt/linux"
+	"github.com/paypal/gatt/linux/internal/cmd"
 )
 
 type advertiser interface {
@@ -115,5 +118,18 @@ func (s *Server) start() error {
 		}
 	}()
 	h.Start()
+	// monitor the status of the BLE controller
+	go func() {
+		// Send a HCI command to controller periodically, if we don't get response
+		// for a while, close the server to notify upper layer.
+		t := time.AfterFunc(time.Second*30, func() {
+			s.err = errors.New("device does not respond")
+			s.Close()
+		})
+		for _ = range time.Tick(time.Second * 10) {
+			h.Cmd().SendAndCheckResp(cmd.LEReadBufferSize{}, []byte{0x00})
+			t.Reset(time.Second * 30)
+		}
+	}()
 	return s.setDefaultAdvertisement()
 }
