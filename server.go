@@ -36,6 +36,9 @@ type Server struct {
 	adv advertiser
 }
 
+// NewServer creates a Server with the specified options.
+// See also Server.Options.
+// See http://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis for more discussion.
 func NewServer(opts ...option) *Server {
 	s := &Server{}
 	for _, opt := range opts {
@@ -55,15 +58,8 @@ func (s *Server) AddService(u UUID) *Service {
 	return svc
 }
 
-// SetAdvertisement builds advertisement data from the specified
-// UUIDs and optional manufacture data. If the UUIDs is set to
-// nil, the UUIDs of added services will be used instead.
-func (s *Server) SetAdvertisement(u []UUID, m []byte) error {
-	return s.setAdvertisement(u, m)
-}
-
-// StartAdvertising starts advertising.
-func (s *Server) StartAdvertising() {
+// Advertise starts advertising.
+func (s *Server) Advertise() {
 	s.adv.Start()
 }
 
@@ -72,13 +68,12 @@ func (s *Server) StopAdvertising() {
 	s.adv.Stop()
 }
 
-// Advertising return the status of advertising.
+// Advertising reports whether the server is advertising.
 func (s *Server) Advertising() bool {
 	return s.adv.Serving()
 }
 
-// AdvetiseAndServe builds the advertising data from the UUIDs of
-// added services, starts the server, and starts advertising.
+// AdvertiseAndServe starts the server and advertises the UUIDs of its services.
 func (s *Server) AdvertiseAndServe() error {
 	if s.serving {
 		return errors.New("a server is already running")
@@ -134,6 +129,10 @@ func (s *Server) Close() error {
 type option func(*Server) option
 
 // Option sets the options specified.
+// It returns an option to restore the last arg's previous value.
+// Some options can only be set while the server is not running;
+// they are best used with NewServer instead of Option.
+// See http://commandcenter.blogspot.com.au/2014/01/self-referential-functions-and-design.html for more discussion.
 func (s *Server) Option(opts ...option) (prev option) {
 	for _, opt := range opts {
 		prev = opt(s)
@@ -141,8 +140,9 @@ func (s *Server) Option(opts ...option) (prev option) {
 	return prev
 }
 
-// Name is the device name, exposed via the Generic Access Service (0x1800).
-// Name may not be changed while serving.
+// Name sets the device name, exposed via the Generic Access Service (0x1800).
+// Name cannot be called while serving.
+// See also Server.NewServer and Server.Option.
 func Name(n string) option {
 	return func(s *Server) option {
 		prev := s.name
@@ -151,19 +151,23 @@ func Name(n string) option {
 	}
 }
 
-// HCI is the hci device to use, e.g. "hci1".
-// If HCI is "", an hci device will be selected
-// automatically.
-func HCI(n string) option {
+// HCI sets the hci device to use, e.g. "hci1".
+// To automatically select an hci device, use "".
+// HCI cannot be called while serving.
+// See also Server.NewServer and Server.Option.
+func HCI(hci string) option {
 	return func(s *Server) option {
+		if s.serving {
+			panic("cannot set HCI while server is running")
+		}
 		prev := s.hci
-		s.hci = n
+		s.hci = hci
 		return HCI(prev)
 	}
 }
 
-// Connect is an optional callback function that will be called
-// when a device has connected to the server.
+// Connect sets a function to be called when a device connects to the server.
+// See also Server.NewServer and Server.Option.
 func Connect(f func(c Conn)) option {
 	return func(s *Server) option {
 		prev := s.connect
@@ -172,8 +176,8 @@ func Connect(f func(c Conn)) option {
 	}
 }
 
-// Disconnect is an optional callback function that will be called
-// when a device has disconnected from the server.
+// Disconnect sets a function to be called when a device disconnects from the server.
+// See also Server.NewServer and Server.Option.
 func Disconnect(f func(c Conn)) option {
 	return func(s *Server) option {
 		prev := s.disconnect
@@ -182,8 +186,8 @@ func Disconnect(f func(c Conn)) option {
 	}
 }
 
-// ReceiveRSSI is an optional callback function that will be called
-// when an RSSI measurement has been received for a connection.
+// ReceiveRSSI sets a function to be called when an RSSI measurement is received for a connection.
+// See also Server.NewServer and Server.Option.
 func ReceiveRSSI(f func(c Conn, rssi int)) option {
 	return func(s *Server) option {
 		prev := s.receiveRSSI
@@ -192,10 +196,11 @@ func ReceiveRSSI(f func(c Conn, rssi int)) option {
 	}
 }
 
-// Closed is an optional callback function that will be called
-// when the server is closed. err will be any associated error.
+// Closed sets a function to be called when a server is closed.
+// err will be any associated error.
 // If the server was closed by calling Close, err may be nil.
-func Closed(f func(error)) option {
+// See also Server.NewServer and Server.Option.
+func Closed(f func(err error)) option {
 	return func(s *Server) option {
 		prev := s.closed
 		s.closed = f
@@ -203,10 +208,10 @@ func Closed(f func(error)) option {
 	}
 }
 
-// StateChange is an optional callback function that will be called
-// when the server changes states.
+// StateChange sets a function to be called when the server changes states.
+// See also Server.NewServer and Server.Option.
 // TODO: Break these states out into separate, meaningful methods?
-// At least document them.
+// TODO: Document the set of states.
 func StateChange(f func(newState string)) option {
 	return func(s *Server) option {
 		prev := s.stateChange
@@ -215,8 +220,10 @@ func StateChange(f func(newState string)) option {
 	}
 }
 
-// MaxConnections sets the maximum connections supported by the device.
-// TODO: Extend the semantic to cover the AdvertiseOnly?
+// MaxConnections sets the maximum number of allowed concurrent connections.
+// Not all HCI devices support multiple connections.
+// See also Server.NewServer.
+// MaxConnections cannot be used with Server.Option.
 func MaxConnections(n int) option {
 	return func(s *Server) option {
 		prev := s.maxConnections
