@@ -18,35 +18,29 @@
 //
 // gatt only supports Linux, with BlueZ installed. This may change.
 //
-// Installed the required packages, e.g.:
+// To gain complete and exclusive control of the HCI device, gatt uses
+// HCI_CHANNEL_USER (introduced in Linux v3.14) instead of HCI_CHANNEL_RAW.
+// Older kernels can find the commits from Marcel Holtmann in kernel tree.
 //
-//     sudo apt-get install bluez libbluetooth-dev libcap2-bin
+//     Bluetooth: Introduce new HCI socket channel for user operation
+//     Bluetooth: Introduce user channel flag for HCI devices
+//     Bluetooth: Refactor raw socket filter into more readable code
+//
+// gatt doesn't require any userland package to run. However, to access the
+// device exclusively, HCI_CHANNEL_USER requires upon opening the device, no
+// other program is accessing it.
+//
+// Make sure that your BLE device is down:
+//
+//     sudo hciconfig
+//     sudo hciconfig hci0 down  # or whatever hci device you want to use
 //
 // If you have BlueZ 5.14+ (or aren't sure), stop the built-in
 // bluetooth server, which interferes with gatt, e.g.:
 //
 //     sudo service bluetooth stop
 //
-// gatt uses two helper executables. The source for them is in the
-// c directory. There's an included makefile. It currently assumes
-// that your native compiler is gcc and that you want the executables
-// in /usr/local/bin. If /usr/local/bin is not already in your PATH,
-// add it. If you don't like those assumptions, edit the makefile.
-// (TODO: Get someone with strong makefile-fu to help me clean this up.)
-//
-//     export PATH="$PATH:/usr/local/bin"
-//     cd $GOPATH/src/github.com/paypal/gatt/c
-//     make
-//     sudo make install
-//
-// Root is required in the install phase to give hci-ble permissions
-// to administer the network.
-//
-// Make sure that your BLE device is up:
-//
-//     sudo hciconfig
-//     sudo hciconfig hci0 up  # or whatever hci device you want to use
-//
+// Root is required to administer the network.
 //
 // USAGE
 //
