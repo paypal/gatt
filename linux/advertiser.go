@@ -108,10 +108,10 @@ func (a *advertiser) AdvertiseService() error {
 	return nil
 }
 
-type AdvertisingOption func(*advertiser) AdvertisingOption
+type Option func(*advertiser) Option
 
 // Option sets the options specified.
-func (a *advertiser) Option(opts ...AdvertisingOption) (prev AdvertisingOption) {
+func (a *advertiser) Option(opts ...Option) (prev Option) {
 	for _, opt := range opts {
 		prev = opt(a)
 	}
@@ -124,8 +124,8 @@ func (a *advertiser) Option(opts ...AdvertisingOption) (prev AdvertisingOption) 
 // longer than MaxAdvertisingPacketLength.
 // If ManufacturerData is also set, their total length must be no
 // longer than MaxAdvertisingPacketLength.
-func AdvertisingPacket(b []byte) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func AdvertisingPacket(b []byte) Option {
+	return func(a *advertiser) Option {
 		prev := a.advertisingPacket
 		a.advertisingPacket = b
 		return AdvertisingPacket(prev)
@@ -136,11 +136,11 @@ func AdvertisingPacket(b []byte) AdvertisingOption {
 // If nil, the scan response packet will set to return the server
 // name, truncated if necessary. The ScanResponsePacket must be no
 // longer than MaxAdvertisingPacketLength.
-func ScanResponse(b []byte) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func ScanResponsePacket(b []byte) Option {
+	return func(a *advertiser) Option {
 		prev := a.scanResponsePacket
 		a.scanResponsePacket = b
-		return ScanResponse(prev)
+		return ScanResponsePacket(prev)
 	}
 }
 
@@ -148,8 +148,8 @@ func ScanResponse(b []byte) AdvertisingOption {
 // If set, it will be appended in the advertising data.
 // The length of AdvertisingPacket ManufactureData must be no longer
 // than MaxAdvertisingPacketLength .
-func ManufacturerData(b []byte) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func ManufacturerData(b []byte) Option {
+	return func(a *advertiser) Option {
 		prev := a.manufacturerData
 		a.manufacturerData = b
 		return ManufacturerData(prev)
@@ -159,8 +159,8 @@ func ManufacturerData(b []byte) AdvertisingOption {
 // AdvertisingIntervalMin is an optional parameter.
 // If set, it overrides the default minimum advertising interval for
 // undirected and low duty cycle directed advertising.
-func AdvertisingIntervalMin(n uint16) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func AdvertisingIntervalMin(n uint16) Option {
+	return func(a *advertiser) Option {
 		prev := a.advertisingIntervalMin
 		a.advertisingIntervalMin = n
 		return AdvertisingIntervalMin(prev)
@@ -170,8 +170,8 @@ func AdvertisingIntervalMin(n uint16) AdvertisingOption {
 // AdvertisingIntervalMax is an optional parameter.
 // If set, it overrides the default maximum advertising interval for
 // undirected and low duty cycle directed advertising.
-func AdvertisingIntervalMax(n uint16) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func AdvertisingIntervalMax(n uint16) Option {
+	return func(a *advertiser) Option {
 		prev := a.advertisingIntervalMax
 		a.advertisingIntervalMax = n
 		return AdvertisingIntervalMax(prev)
@@ -180,8 +180,8 @@ func AdvertisingIntervalMax(n uint16) AdvertisingOption {
 
 // AdvertisingChannelMap is an optional parameter.
 // If set, it overrides the default advertising channel map.
-func AdvertisingChannelMap(n uint8) AdvertisingOption {
-	return func(a *advertiser) AdvertisingOption {
+func AdvertisingChannelMap(n uint8) Option {
+	return func(a *advertiser) Option {
 		prev := a.advertisingChannelMap
 		a.advertisingChannelMap = n
 		return AdvertisingChannelMap(prev)
