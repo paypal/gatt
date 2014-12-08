@@ -20,17 +20,17 @@
 //
 // To gain complete and exclusive control of the HCI device, gatt uses
 // HCI_CHANNEL_USER (introduced in Linux v3.14) instead of HCI_CHANNEL_RAW.
-// Older kernels can find the commits from Marcel Holtmann in kernel tree.
+// Those who must use an older kernel may patch in these relevant commits
+// from Marcel Holtmann:
 //
 //     Bluetooth: Introduce new HCI socket channel for user operation
 //     Bluetooth: Introduce user channel flag for HCI devices
 //     Bluetooth: Refactor raw socket filter into more readable code
 //
-// gatt doesn't require any userland package to run. However, to access the
-// device exclusively, HCI_CHANNEL_USER requires upon opening the device, no
-// other program is accessing it.
+// Note that because gatt uses HCI_CHANNEL_USER, once gatt has opened the
+// device no other program may access it.
 //
-// Make sure that your BLE device is down:
+// Before starting a gatt program, make sure that your BLE device is down:
 //
 //     sudo hciconfig
 //     sudo hciconfig hci0 down  # or whatever hci device you want to use
@@ -40,7 +40,13 @@
 //
 //     sudo service bluetooth stop
 //
-// Root is required to administer the network.
+// Because gatt programs administer network devices, they must
+// either be run as root, or be granted appropriate capabilities:
+//
+//     sudo <executable>
+//     # OR
+//     sudo setcap 'CAP_NET_ADMIN=+ep' <executable>
+//     <executable>
 //
 // USAGE
 //
