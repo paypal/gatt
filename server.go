@@ -236,7 +236,7 @@ func MaxConnections(n int) option {
 	}
 }
 
-// AdvertisingPacket is an optional custom advertising packet.
+// AdvertisingPacket sets a custom advertising packet.
 // If nil, the advertising data will constructed to advertise
 // as many services as possible. The AdvertisingPacket must be no
 // longer than MaxAdvertisingPacketLength.
@@ -252,7 +252,7 @@ func AdvertisingPacket(b []byte) option {
 	}
 }
 
-// ScanResponsePacket is an optional custom scan response packet.
+// ScanResponsePacket sets a custom scan response packet.
 // If nil, the scan response packet will set to return the server
 // name, truncated if necessary. The ScanResponsePacket must be no
 // longer than MaxAdvertisingPacketLength.
@@ -266,10 +266,10 @@ func ScanResponsePacket(b []byte) option {
 	}
 }
 
-// ManufacturerData is an optional custom data.
-// If set, it will be appended in the advertising data.
-// The length of AdvertisingPacket ManufactureData must be no longer
-// than MaxAdvertisingPacketLength .
+// ManufacturerData sets custom manufacturer data.
+// If set, it will be appended to the advertising data.
+// The combined length of the AdvertisingPacket and ManufactureData
+// must be no longer than MaxAdvertisingPacketLength .
 // See also Server.NewServer and Server.Option.
 func ManufacturerData(b []byte) option {
 	return func(s *Server) option {
