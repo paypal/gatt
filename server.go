@@ -2,21 +2,13 @@ package gatt
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net"
-	"strconv"
-	"strings"
-	"sync"
 	"time"
+
+	"github.com/paypal/gatt/hci"
+	"github.com/paypal/gatt/hci/device"
 )
-
-// MaxEIRPacketLength is the maximum allowed AdvertisingPacket
-// and ScanResponsePacket length.
-const MaxEIRPacketLength = 31
-
-// ErrEIRPacketTooLong is the error returned when an AdvertisingPacket
-// or ScanResponsePacket is too long.
-var ErrEIRPacketTooLong = errors.New("max packet length is 31")
 
 // A Server is a GATT server. Servers are single-shot types; once
 // a Server has been closed, it cannot be restarted. Instead, create
@@ -30,20 +22,6 @@ type Server struct {
 	// If HCI is "", an hci device will be selected
 	// automatically.
 	HCI string
-
-	// AdvertisingPacket is an optional custom advertising packet.
-	// If nil, the advertising packet will constructed to advertise
-	// as many services as possible. AdvertisingPacket must be set,
-	// if at all, before starting the server. The AdvertisingPacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	AdvertisingPacket []byte
-
-	// ScanResponsePacket is an optional custom scan response packet.
-	// If nil, the scan response packet will set to return the server
-	// name, truncated if necessary. ScanResponsePacket must be set,
-	// if at all, before starting the server. The ScanResponsePacket
-	// must be no longer than MaxAdvertisingPacketLength.
-	ScanResponsePacket []byte
 
 	// TODO: Add a way to disable connections? The iBeacon advertising
 	// packet will advertise that the device is not connectable. Do
@@ -73,23 +51,18 @@ type Server struct {
 	// At least document them.
 	StateChange func(newState string)
 
-	hci   *hci
-	l2cap *l2cap
+	Serving bool
 
-	addr BDAddr
+	ManufacturerData []byte
 
-	// For now, there is one active conn per server; stash it here.
-	// The conn part of the API is for forward-compatibility.
-	// When Bluetooth 4.1 hits, there may be multiple active
-	// connections per server, at which point, we'll need to
-	// thread the connection through at each event. We won't
-	// be able to do that without l2cap/BlueZ support, though.
-	connmu sync.RWMutex
-	conn   *conn
+	// MaxConnections Set the maximum connections supported by the device.
+	// TODO: Extend the semantic to cover the AdvertiseOnly?
+	MaxConnections int
 
+	adv      *Advertiser
+	addr     BDAddr
 	services []*Service
-
-	quitonce sync.Once
+	handles  *handleRange
 	quit     chan struct{}
 	err      error
 }
@@ -97,7 +70,7 @@ type Server struct {
 // AddService registers a new Service with the server.
 // All services must be added before starting the server.
 func (s *Server) AddService(u UUID) *Service {
-	if serving() {
+	if s.Serving {
 		return nil
 	}
 	svc := &Service{uuid: u}
@@ -108,154 +81,116 @@ func (s *Server) AddService(u UUID) *Service {
 // TODO: Helper function to construct iBeacon advertising packet.
 // See e.g. http://stackoverflow.com/questions/18906988.
 
-func (s *Server) startAdvertising() error {
-	return s.hci.advertiseEIR(s.AdvertisingPacket, s.ScanResponsePacket)
-}
-
-// serverRunning prevents multiple servers from being started concurrently.
-var (
-	serverRunningMu sync.RWMutex
-	serverRunning   bool
-)
-
-func serving() bool {
-	serverRunningMu.RLock()
-	defer serverRunningMu.RUnlock()
-	return serverRunning
-}
-
 func (s *Server) AdvertiseAndServe() error {
-	serverRunningMu.Lock()
-	defer serverRunningMu.Unlock()
-	if serverRunning {
+	go s.SetAdvertisement(nil, nil)
+	return s.Serve()
+}
+
+func (s *Server) Serve() error {
+	if s.Serving {
 		return errors.New("a server is already running")
 	}
-
-	if len(s.AdvertisingPacket) > MaxEIRPacketLength || len(s.ScanResponsePacket) > MaxEIRPacketLength {
-		return ErrEIRPacketTooLong
-	}
-
-	if s.ScanResponsePacket == nil && s.Name != "" {
-		s.ScanResponsePacket = nameScanResponsePacket(s.Name)
-	}
-
-	if s.AdvertisingPacket == nil {
-		uuids := make([]UUID, len(s.services))
-		for i, svc := range s.services {
-			uuids[i] = svc.UUID()
-		}
-		s.AdvertisingPacket, _ = serviceAdvertisingPacket(uuids)
-	}
-
 	if err := s.start(); err != nil {
 		return err
 	}
 
-	select {
-	case <-s.quit:
-		return s.err
-	default:
-	}
-
-	serverRunning = true
-
-	if err := s.l2cap.setServices(s.Name, s.services); err != nil {
-		return err
-	}
-	if err := s.startAdvertising(); err != nil {
-		return err
-	}
-
-	return s.l2cap.listenAndServe()
+	s.Serving = true
+	<-s.quit
+	return s.err
 }
 
-// cleanHCIDevice converts hci (user-provided)
-// into a format safe to pass to the c shims.
-func cleanHCIDevice(hci string) string {
-	if hci == "" {
-		return ""
+func (s *Server) setServices() error {
+	// cannot be called while serving
+	if s.Serving {
+		return errors.New("cannot set services while serving")
 	}
-	if strings.HasPrefix(hci, "hci") {
-		hci = hci[len("hci"):]
-	}
-	if n, err := strconv.Atoi(hci); err != nil || n < 0 {
-		return ""
-	}
-	return hci
+	s.handles = generateHandles(s.Name, s.services, uint16(1)) // ble handles start at 1
+	return nil
 }
 
 func (s *Server) start() error {
-	hciDevice := cleanHCIDevice(s.HCI)
-
-	hciShim, err := newCShim("hci-ble", hciDevice)
+	// logger := log.New(os.Stderr, "", log.LstdFlags)
+	var logger *log.Logger
+	// FIXME: fix the sloppiness here
+	d, err := device.NewSocket(1)
 	if err != nil {
+		d, err = device.NewSocket(0)
+		if err != nil {
+			return err
+		}
+	}
+	h := hci.NewHCI(d, logger, s.MaxConnections)
+	a := NewAdvertiser(h)
+	l := h.L2CAP()
+	l.Adv = a
+
+	if err := s.setServices(); err != nil {
 		return err
 	}
 
 	s.quit = make(chan struct{})
-
-	s.hci = newHCI(hciShim)
-	event, err := s.hci.event()
-	if err != nil {
-		return err
-	}
-	if event == "unauthorized" {
-		return errors.New("unauthorized; does l2cap-ble have the correct permissions?")
-	}
-	if event != "poweredOn" {
-		return fmt.Errorf("unexpected hci event: %q", event)
-	}
-	// TODO: If you kill and restart the server quickly, you get event
-	// "unsupported". Waiting and then starting again fixes it.
-	// Figure out why, and handle it automatically.
+	s.adv = a
 
 	go func() {
 		for {
-			// No need to check s.quit here; if the users closes the server,
-			// hci will get killed, which'll cause an error to be returned here.
-			event, err := s.hci.event()
-			if err != nil {
-				break
-			}
-			if s.StateChange != nil {
-				s.StateChange(event)
+			select {
+			case l2c := <-l.ConnC():
+				remoteAddr := BDAddr{net.HardwareAddr(l2c.Param.PeerAddress[:])}
+				gc := newConn(s, l2c, remoteAddr)
+				go func() {
+					if s.Connect != nil {
+						s.Connect(gc)
+					}
+					gc.loop()
+					if s.Disconnect != nil {
+						s.Disconnect(gc)
+					}
+				}()
+			case <-s.quit:
+				h.Close()
+				if s.Closed != nil {
+					s.Closed(s.err)
+				}
+				return
 			}
 		}
-		s.close(err)
 	}()
-
-	if s.Closed != nil {
-		go func() {
-			<-s.quit
-			s.Closed(s.err)
-		}()
-	}
-
-	l2capShim, err := newCShim("l2cap-ble", hciDevice)
-	if err != nil {
-		s.close(err)
-		return err
-	}
-
-	s.l2cap = newL2cap(l2capShim, s)
+	h.Start()
 	return nil
 }
 
 // Close stops a Server.
 func (s *Server) Close() error {
-	if !serving() {
+	if !s.Serving {
 		return errors.New("not serving")
 	}
-	err := s.hci.Close()
-	l2caperr := s.l2cap.close()
-	if err == nil {
-		err = l2caperr
+	s.adv.Stop()
+	s.Serving = false
+	close(s.quit)
+	return nil
+}
+
+func (s *Server) SetAdvertisement(u []UUID, m []byte) {
+	if len(u) == 0 {
+		for _, svc := range s.services {
+			u = append(u, svc.uuid)
+		}
 	}
-	s.close(err)
-	serverRunningMu.Lock()
-	serverRunning = false
-	serverRunningMu.Unlock()
-	return err
+	// Wait until server is intitalized, or stopped
+	for !s.Serving {
+		select {
+		case <-s.quit:
+			return
+		case <-time.After(time.Second):
+		}
+	}
+	s.adv.mu.Lock()
+	s.adv.AdvertisingPacket, _ = ServiceAdvertisingPacket(u)
+	s.adv.ScanResponsePacket = NameScanResponsePacket(s.Name)
+	s.adv.ManufacturerData = m
+	s.adv.mu.Unlock()
+	s.adv.AdvertiseService()
+	s.adv.Start()
 }
 
 // A BDAddr (Bluetooth Device Address) is a
@@ -266,9 +201,6 @@ type BDAddr struct {
 
 func (a BDAddr) Network() string { return "BLE" }
 
-// Conn is a BLE connection. Due to the limitations of Bluetooth 4.0,
-// there is only one active connection at a time; this will change in
-// Bluetooth 4.1.
 type Conn interface {
 	// LocalAddr returns the address of the connected device (central).
 	LocalAddr() BDAddr
@@ -288,188 +220,11 @@ type Conn interface {
 
 	// MTU returns the current connection mtu.
 	MTU() int
-}
 
-func (s *Server) close(err error) {
-	s.quitonce.Do(func() {
-		s.err = err
-		close(s.quit)
-	})
-}
+	// SetPrivateData sets an optional user defined data.
+	// TODO: rework the interfaces to leverage the context package.
+	SetPrivateData(interface{})
 
-// l2capHandler methods
-
-func (s *Server) receivedBDAddr(bdaddr string) {
-	hwaddr, err := net.ParseMAC(bdaddr)
-	if err != nil {
-		s.addr = BDAddr{hwaddr}
-	}
-}
-
-func (s *Server) request(c *Characteristic) Request {
-	s.connmu.RLock()
-	r := Request{
-		Server:         s,
-		Service:        c.service,
-		Characteristic: c,
-		Conn:           s.conn,
-	}
-	s.connmu.RUnlock()
-	return r
-}
-
-func (s *Server) readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte) {
-	req := &ReadRequest{Request: s.request(c), Cap: maxlen, Offset: offset}
-	resp := newReadResponseWriter(maxlen)
-	c.rhandler.ServeRead(resp, req)
-	return resp.bytes(), resp.status
-}
-
-func (s *Server) writeChar(c *Characteristic, data []byte, noResponse bool) (status byte) {
-	return c.whandler.ServeWrite(s.request(c), data)
-}
-
-func (s *Server) startNotify(c *Characteristic, maxlen int) {
-	if c.notifier != nil {
-		return
-	}
-	c.notifier = newNotifier(s.l2cap, c, maxlen)
-	c.nhandler.ServeNotify(s.request(c), c.notifier)
-}
-
-func (s *Server) stopNotify(c *Characteristic) {
-	c.notifier.stop()
-	c.notifier = nil
-}
-
-func (s *Server) connected(addr net.HardwareAddr) {
-	s.connmu.Lock()
-	s.conn = newConn(s, BDAddr{addr})
-	s.connmu.Unlock()
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.Connect != nil {
-		s.Connect(s.conn)
-	}
-}
-
-func (s *Server) disconnected(hw net.HardwareAddr) {
-	// Stop all notifiers
-	// TODO: Clear all descriptor CCC values?
-	for _, svc := range s.services {
-		for _, char := range svc.chars {
-			if char.notifier != nil {
-				char.notifier.stop()
-				char.notifier = nil
-			}
-		}
-	}
-
-	if s.Disconnect != nil {
-		s.Disconnect(s.conn)
-	}
-	s.connmu.Lock()
-	s.conn = nil
-	s.connmu.Unlock()
-	if err := s.startAdvertising(); err != nil {
-		s.close(err)
-	}
-}
-
-func (s *Server) receivedRSSI(rssi int) {
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.conn != nil {
-		s.conn.rssi = rssi
-		if s.ReceiveRSSI != nil {
-			s.ReceiveRSSI(s.conn, rssi)
-		}
-	}
-}
-
-func (s *Server) disconnect(c *conn) error {
-	s.connmu.RLock()
-	defer s.connmu.RUnlock()
-	if s.conn != c {
-		return errors.New("already disconnected")
-	}
-	return c.server.l2cap.disconnect()
-}
-
-type conn struct {
-	server     *Server
-	localAddr  BDAddr
-	remoteAddr BDAddr
-	rssi       int
-}
-
-func newConn(server *Server, addr BDAddr) *conn {
-	return &conn{
-		server:     server,
-		rssi:       -1,
-		localAddr:  server.addr,
-		remoteAddr: addr,
-	}
-}
-
-func (c *conn) String() string     { return c.remoteAddr.String() }
-func (c *conn) LocalAddr() BDAddr  { return c.localAddr }
-func (c *conn) RemoteAddr() BDAddr { return c.remoteAddr }
-func (c *conn) Close() error       { return c.server.disconnect(c) }
-func (c *conn) RSSI() int          { return c.rssi }
-func (c *conn) MTU() int           { return int(c.server.l2cap.mtu) }
-
-func (c *conn) UpdateRSSI() (rssi int, err error) {
-	// TODO
-	return 0, errors.New("not implemented yet")
-}
-
-type notifier struct {
-	l2c    *l2cap
-	char   *Characteristic
-	maxlen int
-	donemu sync.RWMutex
-	done   bool
-	// This throttle prevents multiple subsequent notifications from
-	// stepping on each others' toes. This toe-stepping appears to
-	// happen at both the HCI and the link layer.
-	throttle *time.Ticker
-}
-
-func newNotifier(l2c *l2cap, c *Characteristic, maxlen int) *notifier {
-	return &notifier{
-		l2c:      l2c,
-		char:     c,
-		maxlen:   maxlen,
-		throttle: time.NewTicker(50 * time.Millisecond),
-	}
-}
-
-func (n *notifier) Write(data []byte) (int, error) {
-	if n.Done() {
-		return 0, errors.New("central stopped notifications")
-	}
-	<-n.throttle.C
-	if err := n.l2c.sendNotification(n.char, data); err != nil {
-		return 0, err
-	}
-	return len(data), nil
-}
-
-func (n *notifier) Cap() int {
-	return n.maxlen
-}
-
-func (n *notifier) Done() bool {
-	n.donemu.RLock()
-	done := n.done
-	n.donemu.RUnlock()
-	return done
-}
-
-func (n *notifier) stop() {
-	n.donemu.Lock()
-	n.done = true
-	n.donemu.Unlock()
-	n.throttle.Stop()
+	// PrivateData returns the user defined data, if assigned.
+	PrivateData() interface{}
 }
