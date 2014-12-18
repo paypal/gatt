@@ -125,8 +125,7 @@ type Characteristic struct {
 	nhandler NotifyHandler
 
 	// storage used by other types
-	service  *Service
-	notifier *notifier
+	service *Service
 }
 
 // HandleRead makes the characteristic support read requests,
