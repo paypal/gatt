@@ -1,55 +1,10 @@
 package gatt
 
 import (
-	"bytes"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 )
-
-type testshim struct {
-	bytes.Buffer
-}
-
-func (t *testshim) Close() error           { return nil }
-func (t *testshim) Wait() error            { return nil }
-func (t *testshim) Signal(os.Signal) error { return nil }
-
-func TestAdvertiseEIR(t *testing.T) {
-	cases := []struct {
-		adv     []byte
-		scan    []byte
-		want    string
-		wanterr bool
-	}{
-		{adv: []byte{0x12, 0x34}, scan: []byte{0xAB, 0xCD}, want: "1234 abcd\n"},
-		{scan: []byte{0xAB, 0xCD}, want: " abcd\n"},
-		{adv: []byte{0x12, 0x34}, want: "1234 \n"},
-		// data too long
-		{adv: bytes.Repeat([]byte{0}, 32), wanterr: true},
-		{scan: bytes.Repeat([]byte{0}, 32), wanterr: true},
-	}
-
-	shim := new(testshim)
-	hci := newHCI(shim)
-	for _, tt := range cases {
-		shim.Buffer.Reset()
-		err := hci.advertiseEIR(tt.adv, tt.scan)
-		if tt.wanterr {
-			if err != ErrEIRPacketTooLong {
-				t.Errorf("AdvertiseEIR(%x, %x) got %v want ErrEIRPacketTooLong", tt.adv, tt.scan, err)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("AdvertiseEIR(%x, %x) unexpected error: %v", tt.adv, tt.scan, err)
-		}
-		if got := shim.Buffer.String(); got != tt.want {
-			t.Errorf("AdvertiseEIR(%x, %x): got %q want %q", tt.adv, tt.scan, got, tt.want)
-		}
-	}
-}
 
 func TestNameScanResponsePacket(t *testing.T) {
 	cases := []struct {
@@ -118,7 +73,7 @@ func TestServiceAdvertisingPacket(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		pack, fit := serviceAdvertisingPacket(tt.uu)
+		pack, fit := ServiceAdvertisingPacket(tt.uu)
 		if got := fmt.Sprintf("%x", pack); got != tt.want {
 			t.Errorf("serviceAdvertisingPacket(%x) packet: got %q want %q", tt.uu, got, tt.want)
 		}

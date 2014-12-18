@@ -1,45 +1,12 @@
-// TODO: Figure out about how to structure things for multiple
-// OS / BLE interface configurations. Build tags? Subpackages?
-
 package gatt
 
 import (
-	"bufio"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
-	"strconv"
-	"strings"
+	"io"
 	"sync"
-	"syscall"
 )
-
-// l2capHandler is the set of callback methods required to handle l2cap events.
-type l2capHandler interface {
-	readChar(c *Characteristic, maxlen int, offset int) (data []byte, status byte)
-	writeChar(c *Characteristic, data []byte, noResponse bool) (status byte)
-	startNotify(c *Characteristic, maxlen int)
-	stopNotify(c *Characteristic)
-	connected(hw net.HardwareAddr)
-	disconnected(hw net.HardwareAddr)
-	receivedRSSI(rssi int)
-	receivedBDAddr(bdaddr string)
-	// TODO: MTUChange?
-	// TODO: SecurityChange?
-}
-
-// newL2cap uses s to provide l2cap access.
-func newL2cap(s shim, handler l2capHandler) *l2cap {
-	c := &l2cap{
-		shim:    s,
-		readbuf: bufio.NewReader(s),
-		mtu:     23,
-		handler: handler,
-	}
-	return c
-}
 
 type security int
 
@@ -49,141 +16,83 @@ const (
 	securityHigh
 )
 
-type l2cap struct {
-	shim     shim
-	readbuf  *bufio.Reader
-	sendmu   sync.Mutex // serializes writes to the shim
-	mtu      uint16
-	handles  *handleRange
-	security security
-	handler  l2capHandler
-	serving  bool
-	quit     chan struct{}
+type conn struct {
+	server      *Server
+	localAddr   BDAddr
+	remoteAddr  BDAddr
+	rssi        int
+	mtu         uint16
+	security    security
+	l2conn      io.ReadWriteCloser
+	notifiers   map[*Characteristic]*notifier
+	notifiersmu *sync.Mutex
 }
 
-func (c *l2cap) listenAndServe() error {
-	if c.serving {
-		return errors.New("already serving")
+func newConn(server *Server, l2conn io.ReadWriteCloser, addr BDAddr) *conn {
+	return &conn{
+		server:      server,
+		rssi:        -1,
+		localAddr:   server.addr,
+		remoteAddr:  addr,
+		mtu:         23,
+		security:    securityLow,
+		l2conn:      l2conn,
+		notifiers:   make(map[*Characteristic]*notifier),
+		notifiersmu: &sync.Mutex{},
 	}
-	c.serving = true
-	c.quit = make(chan struct{})
-	return c.eventloop()
 }
 
-func (c *l2cap) setServices(name string, svcs []*Service) error {
-	// cannot be called while serving
-	if c.serving {
-		return errors.New("cannot set services while serving")
+func (c *conn) String() string     { return c.remoteAddr.String() }
+func (c *conn) LocalAddr() BDAddr  { return c.localAddr }
+func (c *conn) RemoteAddr() BDAddr { return c.remoteAddr }
+func (c *conn) Close() error {
+	if err := c.close(); err != nil {
+		return err
 	}
-	c.handles = generateHandles(name, svcs, uint16(1)) // ble handles start at 1
-	// log.Println("Generated handles: ", c.handles)
+	if err := c.l2conn.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+func (c *conn) RSSI() int { return c.rssi }
+func (c *conn) MTU() int  { return int(c.mtu) }
+func (c *conn) UpdateRSSI() (rssi int, err error) {
+	// TODO
+	return 0, errors.New("not implemented yet")
+}
+func (c *conn) close() error {
+	// Stop all notifiers
+	// TODO: Clear all descriptor CCC values?
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	for _, n := range c.notifiers {
+		n.stop()
+	}
 	return nil
 }
 
-func (c *l2cap) close() error {
-	if !c.serving {
-		return errors.New("not serving")
-	}
-	c.serving = false
-	close(c.quit)
-	return nil
-}
-
-func (c *l2cap) eventloop() error {
+func (c *conn) loop() {
+	// TODO: rework the usage io.ReadWriterCloser to conform the semantic.
+	// Or, alternatively, cook a more stiuable interface between L2CAP layer.
 	for {
-		// TODO: Check c.quit *concurrently* with other
-		// blocking activities.
-		select {
-		case <-c.quit:
-			return nil
-		default:
+		// L2CAP implementations shall support a minimum MTU size of 48 bytes.
+		// The default value is 672 bytes
+		b := make([]byte, 672)
+		n, err := c.l2conn.Read(b)
+		if n == 0 || err != nil {
+			break
 		}
-
-		s, err := c.readbuf.ReadString('\n')
-		// log.Printf("L2CAP: Received %s", s)
-		if err != nil {
-			return err
-		}
-		f := strings.Fields(s)
-		if len(f) < 2 {
-			continue
-		}
-
-		// TODO: Think about concurrency here. Do we want to spawn
-		// new goroutines to not block this core loop?
-
-		switch f[0] {
-		case "accept":
-			hw, err := net.ParseMAC(f[1])
-			if err != nil {
-				return errors.New("failed to parse accepted addr " + f[1] + ": " + err.Error())
-			}
-			c.handler.connected(hw)
-			c.mtu = 23
-		case "disconnect":
-			hw, err := net.ParseMAC(f[1])
-			if err != nil {
-				return errors.New("failed to parse disconnected addr " + f[1] + ": " + err.Error())
-			}
-			c.handler.disconnected(hw)
-		case "rssi":
-			n, err := strconv.Atoi(f[1])
-			if err != nil {
-				return errors.New("failed to parse rssi " + f[1] + ": " + err.Error())
-			}
-			c.handler.receivedRSSI(n)
-		case "security":
-			switch f[1] {
-			case "low":
-				c.security = securityLow
-			case "medium":
-				c.security = securityMed
-			case "high":
-				c.security = securityHigh
-			default:
-				return errors.New("unexpected security change: " + f[1])
-			}
-			// TODO: notify l2capHandler about security change
-		case "bdaddr":
-			c.handler.receivedBDAddr(f[1])
-		case "hciDeviceId":
-			// log.Printf("l2cap hci device: %s", f[1])
-		case "data":
-			req, err := hex.DecodeString(f[1])
-			if err != nil {
-				return err
-			}
-			if err = c.handleReq(req); err != nil {
-				return err
-			}
+		if rsp := c.handleReq(b[:n]); rsp != nil {
+			c.l2conn.Write(rsp)
 		}
 	}
+	c.close()
 }
 
-func (c *l2cap) disconnect() error {
-	return c.shim.Signal(syscall.SIGHUP)
-}
-
-func (c *l2cap) updateRSSI() error {
-	return c.shim.Signal(syscall.SIGUSR1)
-}
-
-func (c *l2cap) send(b []byte) error {
-	if len(b) > int(c.mtu) {
-		panic(fmt.Errorf("cannot send %x: mtu %d", b, c.mtu))
-	}
-
-	// log.Printf("L2CAP: Sending %x", b)
-	c.sendmu.Lock()
-	_, err := fmt.Fprintf(c.shim, "%x\n", b)
-	c.sendmu.Unlock()
-	return err
-}
-
-// handleReq dispatches a raw request from the l2cap shim
+// handleReq dispatches a raw request from the conn shim
 // to an appropriate handler, based on its type.
 // It panics if len(b) == 0.
-func (c *l2cap) handleReq(b []byte) error {
+func (c *conn) handleReq(b []byte) []byte {
 	var resp []byte
 
 	switch reqType, req := b[0], b[1:]; reqType {
@@ -207,10 +116,10 @@ func (c *l2cap) handleReq(b []byte) error {
 		resp = attErrorResp(reqType, 0x0000, attEcodeReqNotSupp)
 	}
 
-	return c.send(resp)
+	return resp
 }
 
-func (c *l2cap) handleMTU(b []byte) []byte {
+func (c *conn) handleMTU(b []byte) []byte {
 	c.mtu = binary.LittleEndian.Uint16(b)
 	// This sanity check helps keep the response
 	// writing code easier, since you don't have
@@ -221,16 +130,21 @@ func (c *l2cap) handleMTU(b []byte) []byte {
 	if c.mtu < 23 {
 		c.mtu = 23
 	}
-	return []byte{attOpMtuResp, b[0], b[1]}
+	// Clip the value to a reasonably safe value.
+	// TODO: make this value configurable.
+	if c.mtu >= 256 {
+		c.mtu = 256
+	}
+	return []byte{attOpMtuResp, uint8(c.mtu), uint8(c.mtu >> 8)}
 }
 
-func (c *l2cap) handleFindInfo(b []byte) []byte {
+func (c *conn) handleFindInfo(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpFindInfoResp)
 	uuidLen := -1
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		var uuid UUID
 		switch h.typ {
 		case typService:
@@ -271,7 +185,7 @@ func (c *l2cap) handleFindInfo(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleFindByType(b []byte) []byte {
+func (c *conn) handleFindByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 
 	if uuid := (UUID{reverse(b[4:6])}); !uuidEqual(uuid, gattAttrPrimaryServiceUUID) {
@@ -284,7 +198,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	w.WriteByteFit(attOpFindByTypeResp)
 
 	var wrote bool
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if !h.isPrimaryService(uuid) {
 			continue
 		}
@@ -304,7 +218,7 @@ func (c *l2cap) handleFindByType(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleReadByType(b []byte) []byte {
+func (c *conn) handleReadByType(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
@@ -313,7 +227,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 		w := newL2capWriter(c.mtu)
 		w.WriteByteFit(attOpReadByTypeResp)
 		uuidLen := -1
-		for _, h := range c.handles.Subrange(start, end) {
+		for _, h := range c.server.handles.Subrange(start, end) {
 			if h.typ != typCharacteristic {
 				continue
 			}
@@ -345,7 +259,7 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	var found bool
 	var secure bool
 
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if h.isCharacteristic(uuid) {
 			valuen = h.valuen
 			secure = h.secure&charRead != 0
@@ -367,11 +281,11 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 		return attErrorResp(attOpReadByTypeReq, start, attEcodeAuthentication)
 	}
 
-	valueh, ok := c.handles.At(valuen)
+	valueh, ok := c.server.handles.At(valuen)
 	if !ok {
 		// This can only happen (I think) if we've done
 		// a bad job constructing our handles.
-		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.handles))
+		panic(fmt.Errorf("bad value handle reading %x: %v\n\nHandles: %#v", uuid, valuen, c.server.handles))
 	}
 	w := newL2capWriter(c.mtu)
 	datalen := w.Writeable(4, valueh.value)
@@ -383,16 +297,15 @@ func (c *l2cap) handleReadByType(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
+func (c *conn) handleRead(reqType byte, b []byte) []byte {
 	valuen := binary.LittleEndian.Uint16(b)
 	var offset uint16
 	if reqType == attOpReadBlobReq {
 		offset = binary.LittleEndian.Uint16(b[2:])
 	}
 	respType := attRespFor[reqType]
-	_ = offset
 
-	h, ok := c.handles.At(valuen)
+	h, ok := c.server.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
@@ -411,9 +324,9 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	case typCharacteristicValue, typDescriptor:
 		valueh := h
 		if h.typ == typCharacteristicValue {
-			vh, ok := c.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
+			vh, ok := c.server.handles.At(valuen - 1) // TODO: Store a cross-reference explicitly instead of this -1 nonsense.
 			if !ok {
-				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
+				panic(fmt.Errorf("invalid handle reference reading characteristicValue handle %d:\n\nHandles: %#v", valuen-1, c.server.handles))
 			}
 			valueh = vh
 		}
@@ -428,12 +341,12 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 		} else {
 			// Ask server for data
 			char := valueh.attr.(*Characteristic) // TODO: Rethink attr being interface{}
-			data, status := c.handler.readChar(char, int(c.mtu-1), int(offset))
+			data, status := c.readChar(char, int(c.mtu-1), int(offset))
 			if status != StatusSuccess {
-				return attErrorResp(reqType, valuen, byte(status))
+				return attErrorResp(reqType, valuen, status)
 			}
 			w.WriteFit(data)
-			offset = 0 // the handler has already adjusted for the offset
+			offset = 0 // the server has already adjusted for the offset
 		}
 	default:
 		// Shouldn't happen?
@@ -448,7 +361,7 @@ func (c *l2cap) handleRead(reqType byte, b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleReadByGroup(b []byte) []byte {
+func (c *conn) handleReadByGroup(b []byte) []byte {
 	start, end := readHandleRange(b)
 	uuid := UUID{reverse(b[4:])}
 
@@ -465,7 +378,7 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpReadByGroupResp)
 	uuidLen := -1
-	for _, h := range c.handles.Subrange(start, end) {
+	for _, h := range c.server.handles.Subrange(start, end) {
 		if h.typ != typ {
 			continue
 		}
@@ -491,19 +404,19 @@ func (c *l2cap) handleReadByGroup(b []byte) []byte {
 	return w.Bytes()
 }
 
-func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
+func (c *conn) handleWrite(reqType byte, b []byte) []byte {
 	valuen := binary.LittleEndian.Uint16(b)
 	data := b[2:]
 
-	h, ok := c.handles.At(valuen)
+	h, ok := c.server.handles.At(valuen)
 	if !ok {
 		return attErrorResp(reqType, valuen, attEcodeInvalidHandle)
 	}
 
 	if h.typ == typCharacteristicValue {
-		vh, ok := c.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
+		vh, ok := c.server.handles.At(valuen - 1) // TODO: Clean this up somehow by storing a better ref explicitly.
 		if !ok {
-			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: %v\n\nHandles: %#v", valuen-1, c.handles))
+			panic(fmt.Errorf("invalid handle reference writing characteristicValue handle %d: \n\nHandles: %#v", valuen-1, c.server.handles))
 		}
 		h = vh
 	}
@@ -523,12 +436,12 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	if h.typ != typDescriptor && !uuidEqual(h.uuid, gattAttrClientCharacteristicConfigUUID) {
 		// Regular write, not CCC
-		result := c.handler.writeChar(h.attr.(*Characteristic), data, noResp)
+		result := c.writeChar(h.attr.(*Characteristic), data, noResp)
 		if noResp {
 			return nil
 		}
 		if result != StatusSuccess {
-			return attErrorResp(reqType, valuen, byte(result))
+			return attErrorResp(reqType, valuen, result)
 		}
 		return []byte{attOpWriteResp}
 	}
@@ -544,29 +457,69 @@ func (c *l2cap) handleWrite(reqType byte, b []byte) []byte {
 
 	if ccc&gattCCCNotifyFlag == 0 {
 		// TODO: Suppress these calls if the notification state hasn't actually changed
-		c.handler.stopNotify(char)
+		c.stopNotify(char)
 		if noResp {
 			return nil
 		}
 		return []byte{attOpWriteResp}
 	}
 
-	c.handler.startNotify(char, int(c.mtu-3))
+	c.startNotify(char, int(c.mtu-3))
 	if noResp {
 		return nil
 	}
 	return []byte{attOpWriteResp}
 }
 
-func (c *l2cap) sendNotification(char *Characteristic, data []byte) error {
+func (c *conn) sendNotification(char *Characteristic, data []byte) (int, error) {
 	w := newL2capWriter(c.mtu)
 	w.WriteByteFit(attOpHandleNotify)
 	w.WriteUint16Fit(char.valuen)
 	w.WriteFit(data)
 	b := w.Bytes()
-	return c.send(b)
+	return c.l2conn.Write(b)
 }
 
 func readHandleRange(b []byte) (start, end uint16) {
 	return binary.LittleEndian.Uint16(b), binary.LittleEndian.Uint16(b[2:])
+}
+
+func (c *conn) request(char *Characteristic) Request {
+	return Request{
+		Server:         c.server,
+		Service:        char.service,
+		Characteristic: char,
+		Conn:           c,
+	}
+}
+
+func (c *conn) readChar(char *Characteristic, maxlen int, offset int) (data []byte, status byte) {
+	req := &ReadRequest{Request: c.request(char), Cap: maxlen, Offset: offset}
+	resp := newReadResponseWriter(maxlen)
+	char.rhandler.ServeRead(resp, req)
+	return resp.bytes(), resp.status
+}
+
+func (c *conn) writeChar(char *Characteristic, data []byte, noResponse bool) (status byte) {
+	return char.whandler.ServeWrite(c.request(char), data)
+}
+
+func (c *conn) startNotify(char *Characteristic, maxlen int) {
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	if _, found := c.notifiers[char]; found {
+		return
+	}
+	n := newNotifier(c, char, maxlen)
+	c.notifiers[char] = n
+	char.nhandler.ServeNotify(c.request(char), n)
+}
+
+func (c *conn) stopNotify(char *Characteristic) {
+	c.notifiersmu.Lock()
+	defer c.notifiersmu.Unlock()
+	if n, found := c.notifiers[char]; found {
+		n.stop()
+		delete(c.notifiers, char)
+	}
 }

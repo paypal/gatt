@@ -1,20 +1,20 @@
 package gatt
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
-	"os"
+	"log"
 	"testing"
 	"time"
 )
 
-type testL2CShim struct {
+type testHandler struct {
 	readc  chan []byte
 	writec chan []byte
 }
 
-func (t *testL2CShim) Read(b []byte) (int, error) {
+func (t *testHandler) Read(b []byte) (int, error) {
 	r := <-t.readc
 	if len(r) > len(b) {
 		panic("fix this annoyance properly")
@@ -23,101 +23,59 @@ func (t *testL2CShim) Read(b []byte) (int, error) {
 	return n, nil
 }
 
-func (t *testL2CShim) Write(b []byte) (int, error) {
+func (t *testHandler) Write(b []byte) (int, error) {
 	t.writec <- b
 	return len(b), nil
 }
 
-func (t *testL2CShim) Close() error           { return nil }
-func (t *testL2CShim) Wait() error            { return nil }
-func (t *testL2CShim) Signal(os.Signal) error { return nil }
-
-type testL2CapHandler struct {
-	l2c *l2cap
-}
-
-func (testL2CapHandler) readChar(c *Characteristic, maxlen int, offset int) ([]byte, byte) {
-	resp := newReadResponseWriter(maxlen)
-	c.rhandler.ServeRead(resp, new(ReadRequest))
-	return resp.bytes(), resp.status
-}
-
-func (testL2CapHandler) writeChar(c *Characteristic, data []byte, noResponse bool) byte {
-	return c.whandler.ServeWrite(Request{}, data)
-}
-
-func (t *testL2CapHandler) startNotify(c *Characteristic, maxlen int) {
-	if c.notifier != nil {
-		return
-	}
-	c.notifier = newNotifier(t.l2c, c, maxlen)
-	c.nhandler.ServeNotify(Request{}, c.notifier)
-}
-
-func (testL2CapHandler) stopNotify(c *Characteristic) {
-	c.notifier.stop()
-	c.notifier = nil
-}
-
-func (testL2CapHandler) connected(hw net.HardwareAddr)    {}
-func (testL2CapHandler) disconnected(hw net.HardwareAddr) {}
-func (testL2CapHandler) receivedRSSI(rssi int)            {}
-func (testL2CapHandler) receivedBDAddr(bdaddr string)     {}
+func (t *testHandler) Close() error { return nil }
 
 func TestServing(t *testing.T) {
-	h := new(testL2CapHandler)
-	shim := &testL2CShim{readc: make(chan []byte), writec: make(chan []byte)}
-	l2c := newL2cap(shim, h)
-	h.l2c = l2c
+	h := &testHandler{readc: make(chan []byte), writec: make(chan []byte)}
 
 	var wrote []byte
 
-	svc := &Service{
-		uuid: MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"),
-	}
-	svc.chars = []*Characteristic{
-		&Characteristic{
-			service: svc,
-			uuid:    MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51b"),
-			props:   charRead,
-			secure:  charRead,
-			rhandler: ReadHandlerFunc(func(resp ReadResponseWriter, req *ReadRequest) {
-				io.WriteString(resp, "count: 1")
-			}),
-		},
-		&Characteristic{
-			service: svc,
-			uuid:    MustParseUUID("16fe0d80-c111-11e3-b8c8-0002a5d5c51b"),
-			props:   charWrite | charWriteNR,
-			secure:  charWrite | charWriteNR,
-			whandler: WriteHandlerFunc(func(r Request, data []byte) (status byte) {
-				wrote = data
-				return StatusSuccess
-			}),
-		},
-		&Characteristic{
-			service: svc,
-			uuid:    MustParseUUID("1c927b50-c116-11e3-8a33-0800200c9a66"),
-			props:   charNotify,
-			secure:  charNotify,
-			nhandler: NotifyHandlerFunc(func(r Request, n Notifier) {
-				go func() {
-					count := 0
-					for !n.Done() {
-						data := []byte(fmt.Sprintf("Count: %d", count))
-						_, err := n.Write(data)
-						if err != nil {
-							panic(err)
-						}
-						count++
-						time.Sleep(10 * time.Millisecond)
-					}
-				}()
-			}),
-		},
-	}
+	srv := NewServer(
+		Name(""),
+		Connect(func(c Conn) { log.Println("Connect: ", c) }),
+		Disconnect(func(c Conn) { log.Println("Disconnect: ", c) }),
+		ReceiveRSSI(func(c Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) }),
+		Closed(func(err error) { log.Println("Server closed: ", err) }),
+		StateChange(func(newState string) { log.Println("Server state change: ", newState) }),
+		MaxConnections(1),
+	)
 
-	l2c.setServices("", []*Service{svc})
+	svc := srv.AddService(MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
+
+	svc.AddCharacteristic(MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51b")).HandleReadFunc(
+		func(resp ReadResponseWriter, req *ReadRequest) {
+			io.WriteString(resp, "count: 1")
+		})
+
+	svc.AddCharacteristic(MustParseUUID("16fe0d80-c111-11e3-b8c8-0002a5d5c51b")).HandleWriteFunc(
+		func(r Request, data []byte) (status byte) {
+			wrote = data
+			return StatusSuccess
+		})
+
+	svc.AddCharacteristic(MustParseUUID("1c927b50-c116-11e3-8a33-0800200c9a66")).HandleNotifyFunc(
+		func(r Request, n Notifier) {
+			go func() {
+				count := 0
+				for !n.Done() {
+					data := []byte(fmt.Sprintf("Count: %d", count))
+					_, err := n.Write(data)
+					if err != nil {
+						panic(err)
+					}
+					count++
+					time.Sleep(10 * time.Millisecond)
+				}
+			}()
+		})
+
+	srv.setServices()
+	go newConn(srv, h, BDAddr{}).loop()
 
 	// Generated handles:
 	//   {1 1 0 5 service [24 0] <ptr> 0 0 []}
@@ -126,7 +84,7 @@ func TestServing(t *testing.T) {
 	//   {4 4 5 0 characteristic [42 1] <ptr> 2 2 []}
 	//   {5 0 0 0 characteristicValue [42 1] <nil> 0 0 [0 128]}
 	//   {6 6 0 6 service [24 1] <ptr> 0 0 []}
-	//   {7 7 0 14 service [9 252 149 192 193 17 17 227 153 4 0 2 165 213 197 27] <ptr> 0 0 []}
+	//   {7 7 0 65535 service [9 252 149 192 193 17 17 227 153 4 0 2 165 213 197 27] <ptr> 0 0 []}
 	//   {8 8 9 0 characteristic [17 250 201 224 193 17 17 227 146 70 0 2 165 213 197 27] <ptr> 2 2 []}
 	//   {9 0 0 0 characteristicValue [17 250 201 224 193 17 17 227 146 70 0 2 165 213 197 27] <nil> 0 0 []}
 	//   {10 10 11 0 characteristic [22 254 13 128 193 17 17 227 184 200 0 2 165 213 197 27] <ptr> 12 12 []}
@@ -134,8 +92,6 @@ func TestServing(t *testing.T) {
 	//   {12 12 13 0 characteristic [28 146 123 80 193 22 17 227 138 51 8 0 32 12 154 102] <ptr> 16 16 []}
 	//   {13 0 0 0 characteristicValue [28 146 123 80 193 22 17 227 138 51 8 0 32 12 154 102] <nil> 0 0 []}
 	//   {14 0 0 0 descriptor [41 2] <ptr> 10 10 [0 0]}] 1}
-
-	go l2c.listenAndServe()
 
 	rxtx := []struct {
 		name  string
@@ -171,7 +127,7 @@ func TestServing(t *testing.T) {
 		{
 			name: "find by type [1,11] svc uuid -- handle range [7,14]",
 			send: "0601000B0000281bc5d5a502000499e31111c1c095fc09",
-			want: "0707000e00",
+			want: "070700ffff",
 		},
 		{
 			name: "read by group [1,3] svc uuid -- unsupported group type at handle 1",
@@ -247,17 +203,13 @@ func TestServing(t *testing.T) {
 	}
 
 	for _, tt := range rxtx {
+		s, _ := hex.DecodeString(tt.send)
 		if tt.send != "" {
-			shim.readc <- []byte("data " + tt.send + "\n")
+			h.readc <- s
 		}
-		resp := <-shim.writec
-		if resp[len(resp)-1] != '\n' {
-			t.Errorf("%s: sent %q, response %q does not end in \\n", tt.name, tt.send, resp)
-			continue
-		}
-		got := string(resp[:len(resp)-1]) // trim \n
+		got := hex.EncodeToString(<-h.writec)
 		if got != tt.want {
-			t.Errorf("%s: sent %q got %q want %q", tt.name, tt.send, got, tt.want)
+			t.Errorf("%s: sent %s got %s want %s", tt.name, tt.send, got, tt.want)
 			continue
 		}
 		if tt.after != nil {
