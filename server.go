@@ -81,6 +81,13 @@ func (s *Server) Advertising() bool {
 	return s.adv.Serving()
 }
 
+// SetAdvertisement sets advertisement data to the specified
+// UUIDs and optional manufacture data. If the UUIDs is set to
+// nil, the UUIDs of added services will be used instead.
+func (s *Server) SetAdvertisement(u []UUID, m []byte) error {
+	return s.setAdvertisement(u, m)
+}
+
 // AdvertiseAndServe starts the server and advertises the UUIDs of its services.
 func (s *Server) AdvertiseAndServe() error {
 	if s.serving {

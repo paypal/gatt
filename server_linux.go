@@ -57,6 +57,7 @@ func (s *Server) setAdvertisement(u []UUID, m []byte) error {
 		linux.AdvertisingIntervalMin(0x00f4),
 		linux.AdvertisingChannelMap(0x7),
 		linux.AdvertisingPacket(ad),
+		linux.ManufacturerData(m),
 		linux.ScanResponsePacket(nameScanResponsePacket(s.name)))
 	return s.adv.AdvertiseService()
 }
