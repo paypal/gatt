@@ -268,8 +268,8 @@ func ScanResponsePacket(b []byte) option {
 
 // ManufacturerData sets custom manufacturer data.
 // If set, it will be appended to the advertising data.
-// The combined length of the AdvertisingPacket and ManufactureData
-// must be no longer than MaxAdvertisingPacketLength .
+// The combined length of the AdvertisingPacket and ManufacturerData
+// must be no longer than MaxAdvertisingPacketLength.
 // See also Server.NewServer and Server.Option.
 func ManufacturerData(b []byte) option {
 	return func(s *Server) option {
