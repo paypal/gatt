@@ -253,9 +253,8 @@ func AdvertisingPacket(b []byte) option {
 	}
 }
 
-// AdvertiseServices sets the services to be advertise.
-// If nil, the advertising data will constructed to advertise
-// as many services as possible.
+// AdvertiseServices sets the services to advertise.
+// If nil, the server will advertise as many services as possible.
 // See also Server.NewServer and Server.Option.
 func AdvertiseServices(u []UUID) option {
 	return func(s *Server) option {
