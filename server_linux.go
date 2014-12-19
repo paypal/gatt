@@ -42,23 +42,12 @@ func (s *Server) setDefaultAdvertisement() error {
 	return s.adv.AdvertiseService()
 }
 
-// setAdvertisement builds advertisement data from the specified
-// UUIDs and optional manufacture data. If the UUIDs is set to
-// nil, the UUIDs of added services will be used instead.
-func (s *Server) setAdvertisement(u []UUID, m []byte) error {
-	if len(u) == 0 {
-		for _, svc := range s.services {
-			u = append(u, svc.uuid)
-		}
-	}
-
+func (s *Server) setAdvertisingServices(u []UUID) {
 	ad, _ := serviceAdvertisingPacket(u)
-	s.adv.Option(linux.AdvertisingIntervalMax(0x00f4),
-		linux.AdvertisingIntervalMin(0x00f4),
-		linux.AdvertisingChannelMap(0x7),
-		linux.AdvertisingPacket(ad),
-		linux.ScanResponsePacket(nameScanResponsePacket(s.name)))
-	return s.adv.AdvertiseService()
+	s.advertisingPacket = ad
+	if s.serving {
+		s.adv.Option(linux.AdvertisingPacket(ad))
+	}
 }
 
 func (s *Server) setAdvertisingPacket(b []byte) {

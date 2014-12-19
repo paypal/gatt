@@ -17,6 +17,7 @@ var notImplemented = errors.New("not implemented")
 
 func (s *Server) setDefaultAdvertisement() error            { return notImplemented }
 func (s *Server) setAdvertisement(u []UUID, m []byte) error { return notImplemented }
+func (s *Server) setAdvertisingServices(u []UUID)           {}
 func (s *Server) setAdvertisingPacket(b []byte)             {}
 func (s *Server) setScanResponsePacket(b []byte)            {}
 func (s *Server) setManufacturerData(b []byte)              {}
