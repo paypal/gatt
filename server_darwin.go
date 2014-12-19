@@ -15,6 +15,7 @@ type advertiser interface {
 
 func (s *Server) setDefaultAdvertisement() error            { return nil }
 func (s *Server) setAdvertisement(u []UUID, m []byte) error { return nil }
+func (s *Server) setAdvertisingServices(u []UUID)           {}
 func (s *Server) setAdvertisingPacket(b []byte)             {}
 func (s *Server) setScanResponsePacket(b []byte)            {}
 func (s *Server) setManufacturerData(b []byte)              {}

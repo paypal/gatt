@@ -26,6 +26,7 @@ type Server struct {
 	stateChange    func(newState string)
 	maxConnections int
 
+	advertiseServices  []UUID
 	advertisingPacket  []byte
 	scanResponsePacket []byte
 	manufacturerData   []byte
@@ -249,6 +250,19 @@ func AdvertisingPacket(b []byte) option {
 		prev := s.advertisingPacket
 		s.advertisingPacket = b
 		return AdvertisingPacket(prev)
+	}
+}
+
+// AdvertiseServices sets the services to be advertise.
+// If nil, the advertising data will constructed to advertise
+// as many services as possible.
+// See also Server.NewServer and Server.Option.
+func AdvertiseServices(u []UUID) option {
+	return func(s *Server) option {
+		s.setAdvertisingServices(u)
+		prev := s.advertiseServices
+		s.advertiseServices = u
+		return AdvertiseServices(prev)
 	}
 }
 
