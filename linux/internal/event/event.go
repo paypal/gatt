@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 )
 
 type EventHandler interface {
@@ -19,14 +18,12 @@ func (f HandlerFunc) HandleEvent(b []byte) error {
 }
 
 type Event struct {
-	logger         *log.Logger
 	evtHandlers    map[EventCode]EventHandler
 	defaultHandler EventHandler
 }
 
-func NewEvent(l *log.Logger) *Event {
+func NewEvent() *Event {
 	return &Event{
-		logger:         l,
 		evtHandlers:    map[EventCode]EventHandler{},
 		defaultHandler: nil,
 	}
@@ -58,12 +55,7 @@ func (e *Event) Dispatch(b []byte) error {
 	return nil
 }
 
-func (e *Event) trace(fmt string, v ...interface{}) {
-	if e.logger == nil {
-		return
-	}
-	e.logger.Printf(fmt, v...)
-}
+func (e *Event) trace(fmt string, v ...interface{}) {}
 
 type EventCode uint8
 

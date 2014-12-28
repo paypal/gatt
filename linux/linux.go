@@ -42,9 +42,9 @@ func NewHCI(l *log.Logger, maxConn int) *HCI {
 			return nil
 		}
 	}
-	c := cmd.NewCmd(d, l)
-	l2c := l2cap.NewL2CAP(c, d, l, maxConn)
-	e := event.NewEvent(l)
+	c := cmd.NewCmd(d)
+	l2c := l2cap.NewL2CAP(c, d, maxConn)
+	e := event.NewEvent()
 	h := &HCI{
 		dev: d,
 		cmd: c,

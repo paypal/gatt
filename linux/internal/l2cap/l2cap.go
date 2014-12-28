@@ -3,7 +3,6 @@ package l2cap
 import (
 	"fmt"
 	"io"
-	"log"
 	"sync"
 
 	"github.com/paypal/gatt/linux/internal/cmd"
@@ -20,7 +19,6 @@ type l2adv interface {
 type L2CAP struct {
 	dev     io.ReadWriter
 	cmd     *cmd.Cmd
-	logger  *log.Logger
 	acceptc chan *Conn
 
 	maxConn int
@@ -33,11 +31,10 @@ type L2CAP struct {
 	conns    map[uint16]*Conn
 }
 
-func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, l *log.Logger, maxConn int) *L2CAP {
+func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, maxConn int) *L2CAP {
 	return &L2CAP{
 		cmd:     cmd,
 		dev:     d,
-		logger:  l,
 		acceptc: make(chan *Conn),
 
 		// TODO: should be quired from controller, or specified by user.
@@ -180,12 +177,7 @@ func (l *L2CAP) Close() error {
 	return nil
 }
 
-func (l *L2CAP) trace(fmt string, v ...interface{}) {
-	if l.logger == nil {
-		return
-	}
-	l.logger.Printf(fmt, v...)
-}
+func (l *L2CAP) trace(fmt string, v ...interface{}) {}
 
 type Conn struct {
 	l2c    *L2CAP
