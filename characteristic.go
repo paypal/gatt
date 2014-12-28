@@ -25,7 +25,6 @@ const (
 
 // A Request is the context for a request from a connected device.
 type Request struct {
-	Server         *Server
 	Conn           Conn
 	Service        *Service
 	Characteristic *Characteristic

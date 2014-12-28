@@ -486,7 +486,6 @@ func readHandleRange(b []byte) (start, end uint16) {
 
 func (c *conn) request(char *Characteristic) Request {
 	return Request{
-		Server:         c.server,
 		Service:        char.service,
 		Characteristic: char,
 		Conn:           c,
