@@ -2,12 +2,10 @@ package gatt
 
 import (
 	"errors"
-	"log"
 	"net"
 	"time"
 
 	"github.com/paypal/gatt/linux"
-	"github.com/paypal/gatt/linux/internal/cmd"
 )
 
 type advertiser interface {
@@ -69,11 +67,8 @@ func (s *Server) setManufacturerData(b []byte) {
 }
 
 func (s *Server) start() error {
-	var logger *log.Logger
-	h := linux.NewHCI(logger, s.maxConnections)
-	a := linux.NewAdvertiser(h.Cmd())
-	l := h.L2CAP()
-	l.Adv = a
+	h := linux.NewHCI(s, s.maxConnections)
+	a := linux.NewAdvertiser(h)
 
 	if err := s.setServices(); err != nil {
 		return err
@@ -85,7 +80,7 @@ func (s *Server) start() error {
 	go func() {
 		for {
 			select {
-			case l2c := <-l.ConnC():
+			case l2c := <-h.ConnC():
 				remoteAddr := BDAddr{net.HardwareAddr(l2c.Param.PeerAddress[:])}
 				c := newConn(s, l2c, remoteAddr)
 				go func() {
@@ -116,7 +111,7 @@ func (s *Server) start() error {
 			s.Close()
 		})
 		for _ = range time.Tick(time.Second * 10) {
-			h.Cmd().SendAndCheckResp(cmd.LEReadBufferSize{}, []byte{0x00})
+			h.Ping()
 			t.Reset(time.Second * 30)
 		}
 	}()

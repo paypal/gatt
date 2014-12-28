@@ -9,11 +9,9 @@ import (
 	"github.com/paypal/gatt/linux/internal/event"
 )
 
-type l2adv interface {
-	Start() error
-	Stop() error
-	Serving() bool
-	SetServing(bool)
+type L2adv interface {
+	Advertise() error
+	StopAdvertising() error
 }
 
 type L2CAP struct {
@@ -24,14 +22,14 @@ type L2CAP struct {
 	maxConn int
 	bufCnt  chan struct{}
 	bufSize int
-	Adv     l2adv
+	adv     L2adv
 
 	connsmu  *sync.Mutex
 	connsSeq int
 	conns    map[uint16]*Conn
 }
 
-func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, maxConn int) *L2CAP {
+func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, adv L2adv, maxConn int) *L2CAP {
 	return &L2CAP{
 		cmd:     cmd,
 		dev:     d,
@@ -41,6 +39,7 @@ func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, maxConn int) *L2CAP {
 		maxConn: maxConn,
 		bufCnt:  make(chan struct{}, 15-1),
 		bufSize: 27,
+		adv:     adv,
 
 		connsmu:  &sync.Mutex{},
 		connsSeq: 0,
@@ -78,7 +77,8 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 	code := event.LEEventCode(b[0])
 	switch code {
 	case event.LEConnectionComplete:
-		l.Adv.SetServing(false)
+		// l.adv.SetServing(false)
+		l.adv.StopAdvertising()
 		ep := &event.LEConnectionCompleteEP{}
 		if err := ep.Unmarshal(b); err != nil {
 			return err
@@ -95,7 +95,7 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 		l.conns[h] = c
 		l.acceptc <- c
 		if len(l.conns) < l.maxConn {
-			l.Adv.Start()
+			l.adv.Advertise()
 		}
 
 		// FIXME: sloppiness. This call should be called by the package user once we
@@ -132,7 +132,7 @@ func (l *L2CAP) HandleDisconnectionComplete(b []byte) error {
 	l.trace("l2conn: 0x%04X disconnected, seq: %d", h, c.seq)
 	close(c.aclc)
 	if len(l.conns) == l.maxConn-1 {
-		l.Adv.Start()
+		l.adv.Advertise()
 	}
 	return nil
 }

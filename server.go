@@ -54,15 +54,15 @@ func (s *Server) AddService(u UUID) *Service {
 }
 
 // Advertise starts advertising.
-func (s *Server) Advertise() {
+func (s *Server) Advertise() error {
 	<-s.inited
-	s.adv.Start()
+	return s.adv.Start()
 }
 
 // StopAdvertising stops advertising.
-func (s *Server) StopAdvertising() {
+func (s *Server) StopAdvertising() error {
 	<-s.inited
-	s.adv.Stop()
+	return s.adv.Stop()
 }
 
 // Advertising reports whether the server is advertising.
