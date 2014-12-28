@@ -56,7 +56,8 @@ func generateHandles(name string, svcs []*Service, base uint16) *handleRange {
 	last := len(svcs) - 1
 	for i, svc := range svcs {
 		var hh []handle
-		n, hh = svc.generateHandles(n, i == last)
+		n, hh = generateServiceHandles(svc, n, i == last)
+
 		handles = append(handles, hh...)
 	}
 
@@ -139,4 +140,100 @@ func (r *handleRange) Subrange(start, end uint16) []handle {
 		endidx = len(r.hh)
 	}
 	return r.hh[startidx:endidx]
+}
+
+func generateServiceHandles(s *Service, n uint16, last bool) (uint16, []handle) {
+	h := handle{
+		typ:    typService,
+		n:      n,
+		uuid:   s.uuid,
+		attr:   s,
+		startn: n,
+		// endn set later
+	}
+	handles := []handle{h}
+
+	for _, char := range s.chars {
+		n++
+		var hh []handle
+		n, hh = generateCharHandles(char, n)
+		handles = append(handles, hh...)
+	}
+
+	handles[0].endn = n
+	n++
+	if last {
+		n = 0xFFFF
+		handles[0].endn = n
+	}
+
+	return n, handles
+}
+
+func generateDescHandles(d *desc, n uint16) handle {
+	return handle{
+		typ:    typDescriptor,
+		n:      n,
+		uuid:   d.UUID(),
+		attr:   d,
+		props:  charRead,
+		secure: 0,
+		value:  d.value,
+	}
+}
+
+func generateCharHandles(c *Characteristic, n uint16) (uint16, []handle) {
+	var h handle
+	var handles []handle
+
+	h = handle{
+		typ:    typCharacteristic,
+		n:      n,
+		uuid:   c.uuid,
+		props:  c.props,
+		secure: c.secure,
+		attr:   c,
+		startn: n,
+		valuen: n + 1,
+	}
+	handles = append(handles, h)
+
+	n++
+	c.valuen = n
+	h = handle{
+		typ:   typCharacteristicValue,
+		uuid:  c.uuid, // copy from the characteristic
+		n:     n,
+		value: c.value,
+	}
+	handles = append(handles, h)
+
+	if c.props&charNotify != 0 {
+		// add ccc (client characteristic configuration) descriptor
+		n++
+		cccn := n
+		secure := uint(0)
+		// If the characteristic requested secure notifications,
+		// then set ccc security to r/w.
+		if c.secure&charNotify != 0 {
+			secure = charRead | charWrite
+		}
+		h = handle{
+			typ:    typDescriptor,
+			n:      cccn,
+			uuid:   gattAttrClientCharacteristicConfigUUID,
+			attr:   c,
+			props:  charRead | charWrite,
+			secure: secure,
+			value:  []byte{0x00, 0x00},
+		}
+		handles = append(handles, h)
+	}
+
+	for _, desc := range c.descs {
+		n++
+		handles = append(handles, generateDescHandles(desc, n))
+	}
+
+	return n, handles
 }

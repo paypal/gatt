@@ -175,62 +175,6 @@ func (c *Characteristic) HandleNotifyFunc(f func(r Request, n Notifier)) {
 // TODO: Add Indication support. It should be transparent and appear
 // as a Notify, the way that Write and WriteNR are handled.
 
-func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
-	var h handle
-	var handles []handle
-
-	h = handle{
-		typ:    typCharacteristic,
-		n:      n,
-		uuid:   c.uuid,
-		props:  c.props,
-		secure: c.secure,
-		attr:   c,
-		startn: n,
-		valuen: n + 1,
-	}
-	handles = append(handles, h)
-
-	n++
-	c.valuen = n
-	h = handle{
-		typ:   typCharacteristicValue,
-		uuid:  c.uuid, // copy from the characteristic
-		n:     n,
-		value: c.value,
-	}
-	handles = append(handles, h)
-
-	if c.props&charNotify != 0 {
-		// add ccc (client characteristic configuration) descriptor
-		n++
-		cccn := n
-		secure := uint(0)
-		// If the characteristic requested secure notifications,
-		// then set ccc security to r/w.
-		if c.secure&charNotify != 0 {
-			secure = charRead | charWrite
-		}
-		h = handle{
-			typ:    typDescriptor,
-			n:      cccn,
-			uuid:   gattAttrClientCharacteristicConfigUUID,
-			attr:   c,
-			props:  charRead | charWrite,
-			secure: secure,
-			value:  []byte{0x00, 0x00},
-		}
-		handles = append(handles, h)
-	}
-
-	for _, desc := range c.descs {
-		n++
-		handles = append(handles, desc.handle(n))
-	}
-
-	return n, handles
-}
-
 // UUID returns the characteristic's UUID
 func (c *Characteristic) UUID() UUID {
 	return c.uuid
