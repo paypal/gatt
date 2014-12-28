@@ -73,7 +73,7 @@ func TestServiceAdvertisingPacket(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		pack, fit := ServiceAdvertisingPacket(tt.uu)
+		pack, fit := serviceAdvertisingPacket(tt.uu)
 		if got := fmt.Sprintf("%x", pack); got != tt.want {
 			t.Errorf("serviceAdvertisingPacket(%x) packet: got %q want %q", tt.uu, got, tt.want)
 		}

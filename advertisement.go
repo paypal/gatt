@@ -1,5 +1,60 @@
 package gatt
 
+import "errors"
+
+// MaxEIRPacketLength is the maximum allowed AdvertisingPacket
+// and ScanResponsePacket length.
+const MaxEIRPacketLength = 31
+
+// ErrEIRPacketTooLong is the error returned when an AdvertisingPacket
+// or ScanResponsePacket is too long.
+var ErrEIRPacketTooLong = errors.New("max packet length is 31")
+
+// advertising data field types
+// TODO: refine naming, check spelling.
+const (
+	typeFlags             = 0x01 // Flags
+	typeSomeUUID16        = 0x02 // Incomplete List of 16-bit Service Class UUIDs
+	typeAllUUID16         = 0x03 // Complete List of 16-bit Service Class UUIDs
+	typeSomeUUID32        = 0x04 // Incomplete List of 32-bit Service Class UUIDs
+	typeAllUUID32         = 0x05 // Complete List of 32-bit Service Class UUIDs
+	typeSomeUUID128       = 0x06 // Incomplete List of 128-bit Service Class UUIDs
+	typeAllUUID128        = 0x07 // Complete List of 128-bit Service Class UUIDs
+	typeShortName         = 0x08 // Shortened Local Name
+	typeCompleteName      = 0x09 // Complete Local Name
+	typeTxPower           = 0x0A // Tx Power Level
+	typeClassOfDevice     = 0x0D // Class of Device
+	typeSimplePairingC192 = 0x0E // Simple Pairing Hash C-192
+	typeSimplePairingR192 = 0x0F // Simple Pairing Randomizer R-192
+	typeSecManagerTK      = 0x10 // Security Manager TK Value
+	typeSecManagerOOB     = 0x11 // Security Manager Out of Band Flags
+	typeSlaveConnInt      = 0x12 // Slave Connection Interval Range
+	typeServiceSol16      = 0x14 // List of 16-bit Service Solicitation UUIDs
+	typeServiceSol128     = 0x15 // List of 128-bit Service Solicitation UUIDs
+	typeServiceData16     = 0x16 // Service Data - 16-bit UUID
+	typePubTargetAddr     = 0x17 // Public Target Address
+	typeRandTargetAddr    = 0x18 // Random Target Address
+	typeAppearance        = 0x19 // Appearance
+	typeAdvInterval       = 0x1A // Advertising Interval
+	typeLEDeviceAddr      = 0x1B // LE Bluetooth Device Address
+	typeLERole            = 0x1C // LE Role
+	typeServiceSol32      = 0x1F // List of 32-bit Service Solicitation UUIDs
+	typeServiceData32     = 0x20 // Service Data - 32-bit UUID
+	typeServiceData128    = 0x21 // Service Data - 128-bit UUID
+	typeLESecConfirm      = 0x22 // LE Secure Connections Confirmation Value
+	typeLESecRandom       = 0x23 // LE Secure Connections Random Value
+	typeManufacturerData  = 0xFF // Manufacturer Specific Data
+)
+
+// flag bits
+const (
+	flagLimitedDiscoverable = 1 << iota // LE Limited Discoverable Mode
+	flagGeneralDiscoverable             // LE General Discoverable Mode
+	flagLEOnly                          // BR/EDR Not Supported. Bit 37 of LMP Feature Mask Definitions (Page 0)
+	flagBothController                  // Simultaneous LE and BR/EDR to Same Device Capable (Controller).
+	flagBothHost                        // Simultaneous LE and BR/EDR to Same Device Capable (Host).
+)
+
 // nameScanResponsePacket constructs a scan response packet with
 // the given name, truncated as necessary.
 func nameScanResponsePacket(name string) []byte {
@@ -21,7 +76,7 @@ func nameScanResponsePacket(name string) []byte {
 func serviceAdvertisingPacket(uu []UUID) ([]byte, []UUID) {
 	fit := make([]UUID, 0, len(uu))
 	adv := new(advPacket)
-	adv.appendField(typeFlags, []byte{flagGenerallyDiscoverable | flagLEOnly})
+	adv.appendField(typeFlags, []byte{flagGeneralDiscoverable | flagLEOnly})
 	for _, u := range uu {
 		if ok := adv.appendUUIDFit(u); ok {
 			fit = append(fit, u)
@@ -29,26 +84,6 @@ func serviceAdvertisingPacket(uu []UUID) ([]byte, []UUID) {
 	}
 	return adv.data, fit
 }
-
-// advertising data field types
-const (
-	typeFlags           = 0x01 // flags
-	typeSomeUUID16      = 0x02 // more 16-bit UUIDs available
-	typeAllUUID16       = 0x03 // complete list of 16-bit UUIDs available
-	typeSomeUUID32      = 0x04 // more 32-bit UUIDs available
-	typeAllUUID32       = 0x05 // complete list of 32-bit UUIDs available
-	typeSomeUUID128     = 0x06 // more 128-bit UUIDs available
-	typeAllUUID128      = 0x07 // complete list of 128-bit UUIDs available
-	typeShortName       = 0x08 // shortened local name
-	typeCompleteName    = 0x09 // complete local name
-	typeManufactureData = 0xFF // manufacture specific data
-)
-
-// flag bits
-const (
-	flagGenerallyDiscoverable = 1 << 1
-	flagLEOnly                = 1 << 2
-)
 
 // TODO: tests
 type advPacket struct {
@@ -70,7 +105,7 @@ func (p *advPacket) appendManufactureDataFit(cid uint16, data []byte) bool {
 		return false
 	}
 	d := append([]byte{uint8(cid), uint8(cid >> 8)}, data...)
-	p.appendField(typeManufactureData, d)
+	p.appendField(typeManufacturerData, d)
 	return true
 }
 

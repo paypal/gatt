@@ -2,14 +2,6 @@ package gatt
 
 import "errors"
 
-// MaxEIRPacketLength is the maximum allowed AdvertisingPacket
-// and ScanResponsePacket length.
-const MaxEIRPacketLength = 31
-
-// ErrEIRPacketTooLong is the error returned when an AdvertisingPacket
-// or ScanResponsePacket is too long.
-var ErrEIRPacketTooLong = errors.New("max packet length is 31")
-
 // A Server is a GATT server. Servers are single-shot types; once
 // a Server has been closed, it cannot be restarted. Instead, create
 // a new Server. Only one server may be running at a time.
