@@ -1,6 +1,12 @@
 package gatt
 
-import "errors"
+import (
+	"errors"
+	"log"
+)
+
+// TODO: The whole file needs to be refined, merge the advPkt into the Advertisement.
+// And flesh out the implementation details.
 
 // MaxEIRPacketLength is the maximum allowed AdvertisingPacket
 // and ScanResponsePacket length.
@@ -54,6 +60,90 @@ const (
 	flagBothController                  // Simultaneous LE and BR/EDR to Same Device Capable (Controller).
 	flagBothHost                        // Simultaneous LE and BR/EDR to Same Device Capable (Host).
 )
+
+// TODO: this is borrowed from core bluetooth.
+// Embedded folks might be interested in more details.
+// Should be done with a more flexible way without losing platform generality.
+type Advertisement struct {
+	LocalName        string
+	ManufacturerData []byte
+	ServiceData      []byte
+	Services         []UUID
+	OverflowService  []UUID
+	TxPowerLevel     int
+	Connectable      bool
+	SolicitedService []UUID
+}
+
+// TODO:
+// func (a *Advertisement) Marshall() ([]byte, error) {
+// }
+
+// FIXME: this serves well as a placeholder. Need to check the correctness and refine it.
+func (a *Advertisement) Unmarshall(b []byte) error {
+	for len(b) > 0 {
+		if len(b) < 2 {
+			return errors.New("invalid advertise data")
+		}
+		l, t := b[0], b[1]
+		if len(b) < int(1+l) {
+			return errors.New("invalid advertise data")
+		}
+		d := b[2 : 1+l]
+		switch t {
+		case typeFlags:
+			a.Connectable = d[0] == 0x01 || d[0] == 0x02
+		case typeSomeUUID16:
+			a.Services = uuidList(a.Services, d, 2)
+		case typeAllUUID16:
+			a.Services = uuidList(a.Services, d, 2)
+		case typeSomeUUID32:
+			a.Services = uuidList(a.Services, d, 4)
+		case typeAllUUID32:
+			a.Services = uuidList(a.Services, d, 4)
+		case typeSomeUUID128:
+			a.Services = uuidList(a.Services, d, 16)
+		case typeAllUUID128:
+			a.Services = uuidList(a.Services, d, 16)
+		case typeShortName:
+			a.LocalName = string(d)
+		case typeCompleteName:
+			a.LocalName = string(d)
+		case typeTxPower:
+			a.TxPowerLevel = int(d[0])
+		case typeServiceSol16:
+			a.SolicitedService = uuidList(a.SolicitedService, d, 2)
+		case typeServiceSol128:
+			a.SolicitedService = uuidList(a.SolicitedService, d, 16)
+		case typeServiceData16:
+			a.ServiceData = make([]byte, len(d))
+			copy(a.ServiceData, d)
+		case typeServiceSol32:
+			a.SolicitedService = uuidList(a.SolicitedService, d, 4)
+		case typeServiceData32:
+			a.ServiceData = make([]byte, len(d))
+			copy(a.ServiceData, d)
+		case typeServiceData128:
+			a.ServiceData = make([]byte, len(d))
+			copy(a.ServiceData, d)
+		case typeManufacturerData:
+			a.ManufacturerData = make([]byte, len(d))
+			copy(a.ManufacturerData, d)
+		default:
+			log.Printf("DATA: [ % X ]", d)
+		}
+		b = b[1+l:]
+	}
+	return nil
+}
+
+func uuidList(u []UUID, d []byte, w int) []UUID {
+	for len(d) > 0 {
+		u = append(u, UUID{d[:w]})
+		d = d[w:]
+	}
+	return u
+}
 
 // nameScanResponsePacket constructs a scan response packet with
 // the given name, truncated as necessary.
