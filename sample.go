@@ -58,5 +58,9 @@ func main() {
 	s.AddService(svc)
 	s.Advertise()
 
+	log.Printf("Start Scanning")
+	defer log.Printf("Staop Scanning")
+	s.Scan(nil)
+
 	select {}
 }
