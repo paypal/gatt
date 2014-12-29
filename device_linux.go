@@ -10,6 +10,7 @@ import (
 
 type Device struct {
 	peripheralManagerHandler
+	centralManagerHandler
 
 	svcs    []*Service
 	hci     *linux.HCI
@@ -91,6 +92,13 @@ func (d *Device) Advertise() error {
 	return d.hci.Advertise()
 }
 func (d *Device) StopAdvertising() error { return d.hci.StopAdvertising() }
+
+func (d *Device) Scan([]UUID) error                         { return d.hci.Scan() }
+func (d *Device) StopScan()                                 { d.hci.StopScan() }
+func (d *Device) Connect(*Peripheral)                       {}
+func (d *Device) CancelConnection(*Peripheral)              {}
+func (d *Device) ConnectedPeripherals([]UUID) []*Peripheral { return nil }
+func (d *Device) Peripherals([]UUID) []*Peripheral          { return nil }
 
 // heartbeat monitors the status of the BLE controller
 func (d *Device) heartbeat() {

@@ -32,3 +32,12 @@ type peripheralManagerHandler struct {
 	// TODO: Helper function to construct iBeacon advertising packet.
 	// See e.g. http://stackoverflow.com/questions/18906988.
 }
+
+type centralManagerHandler struct {
+	PeripheralConnected          func(*Peripheral)
+	PeripheralDisconnected       func(*Peripheral, error)
+	PeripheralFailToConnect      func(*Peripheral, error)
+	PeripheralDiscovered         func(*Peripheral)
+	RetrieveConnectedPeripherals func([]*Peripheral)
+	RetrievePeripherals          func([]*Peripheral)
+}
