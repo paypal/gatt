@@ -82,7 +82,7 @@ func (s *Server) start() error {
 			select {
 			case l2c := <-h.ConnC():
 				remoteAddr := BDAddr{net.HardwareAddr(l2c.Param.PeerAddress[:])}
-				c := newConn(s, l2c, remoteAddr)
+				c := newConn(s.handles, l2c, remoteAddr)
 				go func() {
 					if s.connect != nil {
 						s.connect(c)
