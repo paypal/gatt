@@ -8,6 +8,8 @@ type Service struct {
 	chars []*Characteristic
 }
 
+func NewService(u UUID) *Service { return &Service{uuid: u} }
+
 // AddCharacteristic adds a characteristic to a service.
 // AddCharacteristic panics if the service already contains
 // another characteristic with the same UUID.
