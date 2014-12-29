@@ -119,7 +119,7 @@ type Characteristic struct {
 	props    uint   // enabled properties
 	secure   uint   // security enabled properties
 	value    []byte // static value; internal use only; TODO: replace with "ValueHandler" instead
-	descs    []*desc
+	descs    []*Descriptor
 	valuen   uint16 // handle; set during generateHandles, needed when notifying
 	rhandler ReadHandler
 	whandler WriteHandler
@@ -241,3 +241,20 @@ func (n *notifier) stop() {
 	n.done = true
 	n.donemu.Unlock()
 }
+
+// FIXME: these placeholders, will be fleshed out along discovery implementation.
+// Discuss: Should the members such as service, descriptors returned as pointer or copy.
+func (c *Characteristic) Service() *Service  { return c.service }
+func (c *Characteristic) Value() interface{} { return nil }
+func (c *Characteristic) Descriptors() []*Descriptor {
+	d := make([]*Descriptor, len(c.descs))
+	for i, dd := range c.descs {
+		d[i] = dd
+	}
+	return d
+}
+
+// FIXME: rework property flags for being core bluetooth compatible as possible.
+func (c *Characteristic) Properties()         {}
+func (c *Characteristic) IsNotifying() bool   { return true }
+func (c *Characteristic) IsBroadcasted() bool { return true }

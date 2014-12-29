@@ -170,7 +170,7 @@ func generateServiceHandles(s *Service, n uint16, last bool) (uint16, []handle) 
 	return n, handles
 }
 
-func generateDescHandles(d *desc, n uint16) handle {
+func generateDescHandles(d *Descriptor, n uint16) handle {
 	return handle{
 		typ:    typDescriptor,
 		n:      n,

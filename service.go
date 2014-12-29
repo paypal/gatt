@@ -21,15 +21,15 @@ func (s *Service) AddCharacteristic(u UUID) *Characteristic {
 		}
 	}
 
-	char := &Characteristic{
-		service: s,
-		uuid:    u,
-	}
+	char := &Characteristic{service: s, uuid: u}
 	s.chars = append(s.chars, char)
 	return char
 }
 
+func (s *Service) Characteristics() []*Characteristic { return s.chars }
+
+// FIXME:
+func (s *Service) IsPrimary() bool { return true }
+
 // UUID returns the service's UUID.
-func (s *Service) UUID() UUID {
-	return s.uuid
-}
+func (s *Service) UUID() UUID { return s.uuid }
