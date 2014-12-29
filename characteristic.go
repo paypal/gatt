@@ -20,9 +20,9 @@ const (
 
 // Supported statuses for GATT characteristic read/write operations.
 const (
-	StatusSuccess         = attEcodeSuccess
-	StatusInvalidOffset   = attEcodeInvalidOffset
-	StatusUnexpectedError = attEcodeUnlikely
+	StatusSuccess = iota
+	StatusInvalidOffset
+	StatusUnexpectedError
 )
 
 // A Request is the context for a request from a connected device.
