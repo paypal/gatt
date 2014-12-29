@@ -3,6 +3,8 @@ package l2cap
 import (
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"sync"
 
 	"github.com/paypal/gatt/linux/internal/cmd"
@@ -106,8 +108,19 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 
 	case event.LEConnectionUpdateComplete:
 
-	case event.LEAdvertisingReport,
-		event.LEReadRemoteUsedFeaturesComplete,
+	case event.LEAdvertisingReport:
+		ep := &event.LEAdvertisingReportEP{}
+		if err := ep.Unmarshal(b); err != nil {
+			return err
+		}
+		n := int(ep.NumReports)
+		for i := 0; i < n; i++ {
+			log.Printf("typ: %d, %d, %s, [ %X ], rssi: %d", ep.EventType[i], ep.AddressType[i], net.HardwareAddr(ep.Address[i][:]), ep.Data, ep.RSSI[i])
+			// var a Advertisement
+			// a.Unmarshall(ep.Data[i])
+		}
+
+	case event.LEReadRemoteUsedFeaturesComplete,
 		event.LELTKRequest,
 		event.LERemoteConnectionParameterRequest:
 		return fmt.Errorf("Unhandled LE event: %s", code)
