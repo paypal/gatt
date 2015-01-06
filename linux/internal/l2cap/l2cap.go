@@ -6,8 +6,8 @@ import (
 	"log"
 	"sync"
 
-	"github.com/paypal/gatt/linux/internal/cmd"
-	"github.com/paypal/gatt/linux/internal/event"
+	"github.com/acmacalister/gatt/linux/internal/cmd"
+	"github.com/acmacalister/gatt/linux/internal/event"
 )
 
 type l2adv interface {

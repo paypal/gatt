@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/paypal/gatt/linux"
-	"github.com/paypal/gatt/linux/internal/cmd"
+	"github.com/acmacalister/gatt/linux"
+	"github.com/acmacalister/gatt/linux/internal/cmd"
 )
 
 type advertiser interface {

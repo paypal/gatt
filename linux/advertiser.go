@@ -3,7 +3,7 @@ package linux
 import (
 	"sync"
 
-	"github.com/paypal/gatt/linux/internal/cmd"
+	"github.com/acmacalister/gatt/linux/internal/cmd"
 )
 
 type advertiser struct {

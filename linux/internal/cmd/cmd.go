@@ -8,8 +8,8 @@ import (
 	"io"
 	"log"
 
-	"github.com/paypal/gatt/linux/internal/event"
-	"github.com/paypal/gatt/linux/internal/hci"
+	"github.com/acmacalister/gatt/linux/internal/event"
+	"github.com/acmacalister/gatt/linux/internal/hci"
 )
 
 type CmdParam interface {

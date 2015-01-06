@@ -10,7 +10,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/paypal/gatt"
+	"github.com/acmacalister/gatt"
 )
 
 func main() {

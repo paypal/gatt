@@ -5,10 +5,10 @@ import (
 	"io"
 	"log"
 
-	"github.com/paypal/gatt/linux/internal/cmd"
-	"github.com/paypal/gatt/linux/internal/device"
-	"github.com/paypal/gatt/linux/internal/event"
-	"github.com/paypal/gatt/linux/internal/l2cap"
+	"github.com/acmacalister/gatt/linux/internal/cmd"
+	"github.com/acmacalister/gatt/linux/internal/device"
+	"github.com/acmacalister/gatt/linux/internal/event"
+	"github.com/acmacalister/gatt/linux/internal/l2cap"
 )
 
 type PacketType uint8
