@@ -1,17 +1,6 @@
 package gatt
 
-import (
-	"errors"
-	"net"
-)
-
-// MaxEIRPacketLength is the maximum allowed AdvertisingPacket
-// and ScanResponsePacket length.
-const MaxEIRPacketLength = 31
-
-// ErrEIRPacketTooLong is the error returned when an AdvertisingPacket
-// or ScanResponsePacket is too long.
-var ErrEIRPacketTooLong = errors.New("max packet length is 31")
+import "errors"
 
 // A Server is a GATT server. Servers are single-shot types; once
 // a Server has been closed, it cannot be restarted. Instead, create
@@ -65,15 +54,15 @@ func (s *Server) AddService(u UUID) *Service {
 }
 
 // Advertise starts advertising.
-func (s *Server) Advertise() {
+func (s *Server) Advertise() error {
 	<-s.inited
-	s.adv.Start()
+	return s.adv.Start()
 }
 
 // StopAdvertising stops advertising.
-func (s *Server) StopAdvertising() {
+func (s *Server) StopAdvertising() error {
 	<-s.inited
-	s.adv.Stop()
+	return s.adv.Stop()
 }
 
 // Advertising reports whether the server is advertising.
@@ -295,30 +284,3 @@ func ManufacturerData(b []byte) option {
 
 // TODO: Helper function to construct iBeacon advertising packet.
 // See e.g. http://stackoverflow.com/questions/18906988.
-
-// A BDAddr (Bluetooth Device Address) is a
-// hardware-addressed-based net.Addr.
-type BDAddr struct{ net.HardwareAddr }
-
-func (a BDAddr) Network() string { return "BLE" }
-
-type Conn interface {
-	// LocalAddr returns the address of the connected device (central).
-	LocalAddr() BDAddr
-
-	// LocalAddr returns the address of the local device (peripheral).
-	RemoteAddr() BDAddr
-
-	// Close disconnects the connection.
-	Close() error
-
-	// RSSI returns the last RSSI measurement, or -1 if there have not been any.
-	RSSI() int
-
-	// UpdateRSSI requests an RSSI update and blocks until one has been received.
-	// TODO: Implement.
-	UpdateRSSI() (rssi int, err error)
-
-	// MTU returns the current connection mtu.
-	MTU() int
-}

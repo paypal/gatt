@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"testing"
 	"time"
 )
@@ -35,17 +34,7 @@ func TestServing(t *testing.T) {
 
 	var wrote []byte
 
-	srv := NewServer(
-		Name(""),
-		Connect(func(c Conn) { log.Println("Connect: ", c) }),
-		Disconnect(func(c Conn) { log.Println("Disconnect: ", c) }),
-		ReceiveRSSI(func(c Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) }),
-		Closed(func(err error) { log.Println("Server closed: ", err) }),
-		StateChange(func(newState string) { log.Println("Server state change: ", newState) }),
-		MaxConnections(1),
-	)
-
-	svc := srv.AddService(MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
+	svc := &Service{uuid: MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b")}
 
 	svc.AddCharacteristic(MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51b")).HandleReadFunc(
 		func(resp ReadResponseWriter, req *ReadRequest) {
@@ -74,8 +63,8 @@ func TestServing(t *testing.T) {
 			}()
 		})
 
-	srv.setServices()
-	go newConn(srv, h, BDAddr{}).loop()
+	handles := generateHandles("", []*Service{svc}, uint16(1)) // ble handles start at 1
+	go newConn(handles, h, BDAddr{}).loop()
 
 	// Generated handles:
 	//   {1 1 0 5 service [24 0] <ptr> 0 0 []}

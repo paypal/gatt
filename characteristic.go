@@ -2,7 +2,9 @@ package gatt
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"sync"
 )
 
 // Do not re-order the bit flags below;
@@ -18,14 +20,13 @@ const (
 
 // Supported statuses for GATT characteristic read/write operations.
 const (
-	StatusSuccess         = attEcodeSuccess
-	StatusInvalidOffset   = attEcodeInvalidOffset
-	StatusUnexpectedError = attEcodeUnlikely
+	StatusSuccess = iota
+	StatusInvalidOffset
+	StatusUnexpectedError
 )
 
 // A Request is the context for a request from a connected device.
 type Request struct {
-	Server         *Server
 	Conn           Conn
 	Service        *Service
 	Characteristic *Characteristic
@@ -175,62 +176,6 @@ func (c *Characteristic) HandleNotifyFunc(f func(r Request, n Notifier)) {
 // TODO: Add Indication support. It should be transparent and appear
 // as a Notify, the way that Write and WriteNR are handled.
 
-func (c *Characteristic) generateHandles(n uint16) (uint16, []handle) {
-	var h handle
-	var handles []handle
-
-	h = handle{
-		typ:    typCharacteristic,
-		n:      n,
-		uuid:   c.uuid,
-		props:  c.props,
-		secure: c.secure,
-		attr:   c,
-		startn: n,
-		valuen: n + 1,
-	}
-	handles = append(handles, h)
-
-	n++
-	c.valuen = n
-	h = handle{
-		typ:   typCharacteristicValue,
-		uuid:  c.uuid, // copy from the characteristic
-		n:     n,
-		value: c.value,
-	}
-	handles = append(handles, h)
-
-	if c.props&charNotify != 0 {
-		// add ccc (client characteristic configuration) descriptor
-		n++
-		cccn := n
-		secure := uint(0)
-		// If the characteristic requested secure notifications,
-		// then set ccc security to r/w.
-		if c.secure&charNotify != 0 {
-			secure = charRead | charWrite
-		}
-		h = handle{
-			typ:    typDescriptor,
-			n:      cccn,
-			uuid:   gattAttrClientCharacteristicConfigUUID,
-			attr:   c,
-			props:  charRead | charWrite,
-			secure: secure,
-			value:  []byte{0x00, 0x00},
-		}
-		handles = append(handles, h)
-	}
-
-	for _, desc := range c.descs {
-		n++
-		handles = append(handles, desc.handle(n))
-	}
-
-	return n, handles
-}
-
 // UUID returns the characteristic's UUID
 func (c *Characteristic) UUID() UUID {
 	return c.uuid
@@ -260,3 +205,39 @@ func (w *readResponseWriter) Write(b []byte) (int, error) {
 
 func (w *readResponseWriter) SetStatus(status byte) { w.status = status }
 func (w *readResponseWriter) bytes() []byte         { return w.buf.Bytes() }
+
+type notifier struct {
+	conn   *conn
+	char   *Characteristic
+	maxlen int
+	donemu sync.RWMutex
+	done   bool
+}
+
+func newNotifier(c *conn, cc *Characteristic, maxlen int) *notifier {
+	return &notifier{conn: c, char: cc, maxlen: maxlen}
+}
+
+func (n *notifier) Write(data []byte) (int, error) {
+	if n.Done() {
+		return 0, errors.New("central stopped notifications")
+	}
+	return n.conn.sendNotification(n.char, data)
+}
+
+func (n *notifier) Cap() int {
+	return n.maxlen
+}
+
+func (n *notifier) Done() bool {
+	n.donemu.RLock()
+	done := n.done
+	n.donemu.RUnlock()
+	return done
+}
+
+func (n *notifier) stop() {
+	n.donemu.Lock()
+	n.done = true
+	n.donemu.Unlock()
+}

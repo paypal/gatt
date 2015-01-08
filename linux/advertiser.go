@@ -21,7 +21,7 @@ type advertiser struct {
 	cmd *cmd.Cmd
 }
 
-func NewAdvertiser(c *cmd.Cmd) *advertiser {
+func NewAdvertiser(h *HCI) *advertiser {
 	return &advertiser{
 		advertisingIntervalMin: 0x0800,
 		advertisingIntervalMax: 0x0800,
@@ -29,7 +29,7 @@ func NewAdvertiser(c *cmd.Cmd) *advertiser {
 
 		servingmu: &sync.RWMutex{},
 
-		cmd: c,
+		cmd: h.c,
 	}
 }
 

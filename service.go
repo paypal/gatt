@@ -27,34 +27,6 @@ func (s *Service) AddCharacteristic(u UUID) *Characteristic {
 	return char
 }
 
-func (s *Service) generateHandles(n uint16, last bool) (uint16, []handle) {
-	h := handle{
-		typ:    typService,
-		n:      n,
-		uuid:   s.uuid,
-		attr:   s,
-		startn: n,
-		// endn set later
-	}
-	handles := []handle{h}
-
-	for _, char := range s.chars {
-		n++
-		var hh []handle
-		n, hh = char.generateHandles(n)
-		handles = append(handles, hh...)
-	}
-
-	handles[0].endn = n
-	n++
-	if last {
-		n = 0xFFFF
-		handles[0].endn = n
-	}
-
-	return n, handles
-}
-
 // UUID returns the service's UUID.
 func (s *Service) UUID() UUID {
 	return s.uuid

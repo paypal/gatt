@@ -18,10 +18,9 @@ type CmdParam interface {
 	Len() int
 }
 
-func NewCmd(d io.Writer, l *log.Logger) *Cmd {
+func NewCmd(d io.Writer) *Cmd {
 	c := &Cmd{
 		dev:     d,
-		logger:  l,
 		sent:    []*cmdPkt{},
 		compc:   make(chan event.CommandCompleteEP),
 		statusc: make(chan event.CommandStatusEP),
@@ -47,18 +46,12 @@ func (c cmdPkt) marshal() []byte {
 
 type Cmd struct {
 	dev     io.Writer
-	logger  *log.Logger
 	sent    []*cmdPkt
 	compc   chan event.CommandCompleteEP
 	statusc chan event.CommandStatusEP
 }
 
-func (c Cmd) trace(fmt string, v ...interface{}) {
-	if c.logger == nil {
-		return
-	}
-	c.logger.Printf(fmt, v...)
-}
+func (c Cmd) trace(fmt string, v ...interface{}) {}
 
 func (c *Cmd) HandleComplete(b []byte) error {
 	var ep event.CommandCompleteEP
