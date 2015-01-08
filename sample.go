@@ -14,17 +14,15 @@ import (
 )
 
 func main() {
-	srv := gatt.NewServer(
-		gatt.Name("gophers"),
-		gatt.Connect(func(c gatt.Conn) { log.Println("Connect: ", c) }),
-		gatt.Disconnect(func(c gatt.Conn) { log.Println("Disconnect: ", c) }),
-		gatt.ReceiveRSSI(func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) }),
-		gatt.Closed(func(err error) { log.Println("Server closed: ", err) }),
-		gatt.StateChange(func(newState string) { log.Println("Server state change: ", newState) }),
-		gatt.MaxConnections(1),
-	)
+	s := gatt.NewDevice()
+	s.Name = "gophers"
+	s.Connected = func(c gatt.Conn) { log.Println("Connect: ", c) }
+	s.Disconnected = func(c gatt.Conn) { log.Println("Disconnect: ", c) }
+	s.ReceiveRSSI = func(c gatt.Conn, rssi int) { log.Println("RSSI: ", c, " ", rssi) }
+	s.Closed = func(err error) { log.Println("Server closed: ", err) }
+	s.StateChange = func(newState string) { log.Println("Server state change: ", newState) }
 
-	svc := srv.AddService(gatt.MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
+	svc := gatt.NewService(gatt.MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
 
 	n := 0
 	rchar := svc.AddCharacteristic(gatt.MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51b"))
@@ -40,7 +38,8 @@ func main() {
 	wchar.HandleWriteFunc(
 		func(r gatt.Request, data []byte) (status byte) {
 			log.Println("Wrote:", string(data))
-			return gatt.StatusSuccess
+			// return gatt.StatusSuccess
+			return 0
 		})
 
 	nchar := svc.AddCharacteristic(gatt.MustParseUUID("1c927b50-c116-11e3-8a33-0800200c9a66"))
@@ -56,5 +55,12 @@ func main() {
 			}()
 		})
 
-	log.Fatal(srv.AdvertiseAndServe())
+	s.AddService(svc)
+	s.Advertise()
+
+	log.Printf("Start Scanning")
+	defer log.Printf("Staop Scanning")
+	s.Scan(nil)
+
+	select {}
 }

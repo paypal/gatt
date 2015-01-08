@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 )
 
 type EventHandler interface {
@@ -19,14 +18,12 @@ func (f HandlerFunc) HandleEvent(b []byte) error {
 }
 
 type Event struct {
-	logger         *log.Logger
 	evtHandlers    map[EventCode]EventHandler
 	defaultHandler EventHandler
 }
 
-func NewEvent(l *log.Logger) *Event {
+func NewEvent() *Event {
 	return &Event{
-		logger:         l,
 		evtHandlers:    map[EventCode]EventHandler{},
 		defaultHandler: nil,
 	}
@@ -58,12 +55,7 @@ func (e *Event) Dispatch(b []byte) error {
 	return nil
 }
 
-func (e *Event) trace(fmt string, v ...interface{}) {
-	if e.logger == nil {
-		return
-	}
-	e.logger.Printf(fmt, v...)
-}
+func (e *Event) trace(fmt string, v ...interface{}) {}
 
 type EventCode uint8
 
@@ -384,12 +376,40 @@ type LEAdvertisingReportEP struct {
 	Address      [][6]byte
 	Length       []uint8
 	Data         [][]byte
-	RSSI         []uint8
+	RSSI         []int8
 }
 
 func (ep *LEAdvertisingReportEP) Unmarshal(b []byte) error {
-	// FIXME: customized marshal function
-	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, ep)
+	buf := bytes.NewBuffer(b)
+	binary.Read(buf, binary.LittleEndian, &ep.SubeventCode)
+	binary.Read(buf, binary.LittleEndian, &ep.NumReports)
+	n := int(ep.NumReports)
+	ep.EventType = make([]uint8, n)
+	ep.AddressType = make([]uint8, n)
+	ep.Address = make([][6]byte, n)
+	ep.Length = make([]uint8, n)
+	ep.Data = make([][]byte, n)
+	ep.RSSI = make([]int8, n)
+	for i := 0; i < n; i++ {
+		binary.Read(buf, binary.LittleEndian, &ep.EventType[i])
+	}
+	for i := 0; i < n; i++ {
+		binary.Read(buf, binary.LittleEndian, &ep.AddressType[i])
+	}
+	for i := 0; i < n; i++ {
+		binary.Read(buf, binary.LittleEndian, &ep.Address[i])
+	}
+	for i := 0; i < n; i++ {
+		binary.Read(buf, binary.LittleEndian, &ep.Length[i])
+	}
+	for i := 0; i < n; i++ {
+		ep.Data[i] = make([]byte, ep.Length[i])
+		binary.Read(buf, binary.LittleEndian, &ep.Data[i])
+	}
+	for i := 0; i < n; i++ {
+		binary.Read(buf, binary.LittleEndian, &ep.RSSI[i])
+	}
+	return nil
 }
 
 type LEConnectionUpdateCompleteEP struct {

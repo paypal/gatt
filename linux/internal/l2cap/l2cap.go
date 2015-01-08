@@ -4,46 +4,44 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"sync"
 
 	"github.com/paypal/gatt/linux/internal/cmd"
 	"github.com/paypal/gatt/linux/internal/event"
 )
 
-type l2adv interface {
-	Start() error
-	Stop() error
-	Serving() bool
-	SetServing(bool)
+type L2adv interface {
+	Advertise() error
+	StopAdvertising() error
 }
 
 type L2CAP struct {
 	dev     io.ReadWriter
 	cmd     *cmd.Cmd
-	logger  *log.Logger
 	acceptc chan *Conn
 
 	maxConn int
 	bufCnt  chan struct{}
 	bufSize int
-	Adv     l2adv
+	adv     L2adv
 
 	connsmu  *sync.Mutex
 	connsSeq int
 	conns    map[uint16]*Conn
 }
 
-func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, l *log.Logger, maxConn int) *L2CAP {
+func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, adv L2adv, maxConn int) *L2CAP {
 	return &L2CAP{
 		cmd:     cmd,
 		dev:     d,
-		logger:  l,
 		acceptc: make(chan *Conn),
 
 		// TODO: should be quired from controller, or specified by user.
 		maxConn: maxConn,
 		bufCnt:  make(chan struct{}, 15-1),
 		bufSize: 27,
+		adv:     adv,
 
 		connsmu:  &sync.Mutex{},
 		connsSeq: 0,
@@ -81,7 +79,8 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 	code := event.LEEventCode(b[0])
 	switch code {
 	case event.LEConnectionComplete:
-		l.Adv.SetServing(false)
+		// l.adv.SetServing(false)
+		l.adv.StopAdvertising()
 		ep := &event.LEConnectionCompleteEP{}
 		if err := ep.Unmarshal(b); err != nil {
 			return err
@@ -98,7 +97,7 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 		l.conns[h] = c
 		l.acceptc <- c
 		if len(l.conns) < l.maxConn {
-			l.Adv.Start()
+			l.adv.Advertise()
 		}
 
 		// FIXME: sloppiness. This call should be called by the package user once we
@@ -109,8 +108,19 @@ func (l *L2CAP) HandleLEMeta(b []byte) error {
 
 	case event.LEConnectionUpdateComplete:
 
-	case event.LEAdvertisingReport,
-		event.LEReadRemoteUsedFeaturesComplete,
+	case event.LEAdvertisingReport:
+		ep := &event.LEAdvertisingReportEP{}
+		if err := ep.Unmarshal(b); err != nil {
+			return err
+		}
+		n := int(ep.NumReports)
+		for i := 0; i < n; i++ {
+			log.Printf("typ: %d, %d, %s, [ %X ], rssi: %d", ep.EventType[i], ep.AddressType[i], net.HardwareAddr(ep.Address[i][:]), ep.Data, ep.RSSI[i])
+			// var a Advertisement
+			// a.Unmarshall(ep.Data[i])
+		}
+
+	case event.LEReadRemoteUsedFeaturesComplete,
 		event.LELTKRequest,
 		event.LERemoteConnectionParameterRequest:
 		return fmt.Errorf("Unhandled LE event: %s", code)
@@ -135,7 +145,7 @@ func (l *L2CAP) HandleDisconnectionComplete(b []byte) error {
 	l.trace("l2conn: 0x%04X disconnected, seq: %d", h, c.seq)
 	close(c.aclc)
 	if len(l.conns) == l.maxConn-1 {
-		l.Adv.Start()
+		l.adv.Advertise()
 	}
 	return nil
 }
@@ -180,12 +190,7 @@ func (l *L2CAP) Close() error {
 	return nil
 }
 
-func (l *L2CAP) trace(fmt string, v ...interface{}) {
-	if l.logger == nil {
-		return
-	}
-	l.logger.Printf(fmt, v...)
-}
+func (l *L2CAP) trace(fmt string, v ...interface{}) {}
 
 type Conn struct {
 	l2c    *L2CAP
