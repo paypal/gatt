@@ -1,45 +1,26 @@
-package l2cap
+package linux
 
 import (
 	"fmt"
 	"io"
 	"log"
 	"sync"
-
-	"github.com/paypal/gatt/linux/internal/cmd"
-	"github.com/paypal/gatt/linux/internal/event"
 )
 
-type l2adv interface {
-	Start() error
-	Stop() error
-	Serving() bool
-	SetServing(bool)
-}
-
-type L2CAP struct {
-	dev     io.ReadWriter
-	cmd     *cmd.Cmd
-	logger  *log.Logger
-	acceptc chan *Conn
+type l2cap struct {
+	hci *HCI
 
 	maxConn int
 	bufCnt  chan struct{}
 	bufSize int
-	Adv     l2adv
 
 	connsmu  *sync.Mutex
 	connsSeq int
-	conns    map[uint16]*Conn
+	conns    map[uint16]*conn
 }
 
-func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, l *log.Logger, maxConn int) *L2CAP {
-	return &L2CAP{
-		cmd:     cmd,
-		dev:     d,
-		logger:  l,
-		acceptc: make(chan *Conn),
-
+func newL2CAP(maxConn int) *l2cap {
+	return &l2cap{
 		// TODO: should be quired from controller, or specified by user.
 		maxConn: maxConn,
 		bufCnt:  make(chan struct{}, 15-1),
@@ -47,83 +28,86 @@ func NewL2CAP(cmd *cmd.Cmd, d io.ReadWriter, l *log.Logger, maxConn int) *L2CAP 
 
 		connsmu:  &sync.Mutex{},
 		connsSeq: 0,
-		conns:    map[uint16]*Conn{},
+		conns:    map[uint16]*conn{},
 	}
 }
 
 type aclData struct {
-	handle uint16
-	flags  uint8
-	dlen   uint16
-	b      []byte
+	attr  uint16
+	flags uint8
+	dlen  uint16
+	b     []byte
 }
 
-func (h *aclData) Unmarshal(b []byte) error {
+func (h *aclData) unmarshal(b []byte) error {
 	if len(b) < 4 {
 		return fmt.Errorf("malformed acl packet")
 	}
-	handle := uint16(b[0]) | (uint16(b[1]&0x0f) << 8)
+	attr := uint16(b[0]) | (uint16(b[1]&0x0f) << 8)
 	flags := b[1] >> 4
 	dlen := uint16(b[2]) | (uint16(b[3]) << 8)
 	if len(b) != 4+int(dlen) {
 		return fmt.Errorf("malformed acl packet")
 	}
 
-	*h = aclData{handle: handle, flags: flags, dlen: dlen, b: b[4:]}
+	*h = aclData{attr: attr, flags: flags, dlen: dlen, b: b[4:]}
 	return nil
 }
 
 func (h *aclData) String() string {
-	return fmt.Sprintf("ACL Data: handle %d flags 0x%02X dlen 0x%04X", h.handle, h.flags, h.dlen)
+	return fmt.Sprintf("ACL Data: attr %d flags 0x%02X dlen 0x%04X", h.attr, h.flags, h.dlen)
 }
 
-func (l *L2CAP) HandleLEMeta(b []byte) error {
-	code := event.LEEventCode(b[0])
+func (l *l2cap) handleLEMeta(b []byte) error {
+	code := leEventCode(b[0])
 	switch code {
-	case event.LEConnectionComplete:
-		l.Adv.SetServing(false)
-		ep := &event.LEConnectionCompleteEP{}
-		if err := ep.Unmarshal(b); err != nil {
+	case leConnectionComplete:
+		l.hci.StopAdvertising()
+		ep := &leConnectionCompleteEP{}
+		if err := ep.unmarshal(b); err != nil {
 			return err
 		}
-		h := ep.ConnectionHandle
+		h := ep.connectionHandle
 		c := newConn(l, h, ep, l.connsSeq)
 		l.connsSeq++
 		l.connsmu.Lock()
 		defer l.connsmu.Unlock()
 		if c, found := l.conns[h]; found {
-			l.trace("l2cap: handle 0x%04X is still alived (seq: %d)", h, c.seq)
+			l.trace("l2cap: attr 0x%04X is still alived (seq: %d)", h, c.seq)
 		}
-
 		l.conns[h] = c
-		l.acceptc <- c
+		go l.hci.handleConnection(c, c.param.peerAddress, ep.role == 0x01)
 		if len(l.conns) < l.maxConn {
-			l.Adv.Start()
+			l.hci.Advertise()
 		}
 
 		// FIXME: sloppiness. This call should be called by the package user once we
-		// flesh out the support of L2CAP signaling packets (CID:0x0001,0x0005)
-		if ep.ConnLatency != 0 || ep.ConnInterval > 0x18 {
-			c.UpdateConnection()
+		// flesh out the support of l2cap signaling packets (CID:0x0001,0x0005)
+		if ep.connLatency != 0 || ep.connInterval > 0x18 {
+			c.updateConnection()
 		}
 
-	case event.LEConnectionUpdateComplete:
+	case leConnectionUpdateComplete:
+		// anything to do here?
 
-	case event.LEAdvertisingReport,
-		event.LEReadRemoteUsedFeaturesComplete,
-		event.LELTKRequest,
-		event.LERemoteConnectionParameterRequest:
+	case leAdvertisingReport:
+		l.hci.handleAdvertisement(b)
+
+	// case leReadRemoteUsedFeaturesComplete:
+	// case leLTKRequest:
+	// case leRemoteConnectionParameterRequest:
+	default:
 		return fmt.Errorf("Unhandled LE event: %s", code)
 	}
 	return nil
 }
 
-func (l *L2CAP) HandleDisconnectionComplete(b []byte) error {
-	ep := &event.DisconnectionCompleteEP{}
-	if err := ep.Unmarshal(b); err != nil {
+func (l *l2cap) handleDisconnectionComplete(b []byte) error {
+	ep := &disconnectionCompleteEP{}
+	if err := ep.unmarshal(b); err != nil {
 		return err
 	}
-	h := ep.ConnectionHandle
+	h := ep.connectionHandle
 	l.connsmu.Lock()
 	defer l.connsmu.Unlock()
 	c, found := l.conns[h]
@@ -135,118 +119,68 @@ func (l *L2CAP) HandleDisconnectionComplete(b []byte) error {
 	l.trace("l2conn: 0x%04X disconnected, seq: %d", h, c.seq)
 	close(c.aclc)
 	if len(l.conns) == l.maxConn-1 {
-		l.Adv.Start()
+		l.hci.Advertise()
 	}
 	return nil
 }
 
-func (l *L2CAP) HandleNumberOfCompletedPkts(b []byte) error {
-	ep := &event.NumberOfCompletedPktsEP{}
-	if err := ep.Unmarshal(b); err != nil {
+func (l *l2cap) handleNumberOfCompletedPkts(b []byte) error {
+	ep := &numberOfCompletedPktsEP{}
+	if err := ep.unmarshal(b); err != nil {
 		return err
 	}
-	for _, r := range ep.Packets {
-		for i := 0; i < int(r.NumOfCompletedPkts); i++ {
+	for _, r := range ep.packets {
+		for i := 0; i < int(r.numOfCompletedPkts); i++ {
 			<-l.bufCnt
 		}
 	}
 	return nil
 }
 
-func (l *L2CAP) HandleL2CAP(b []byte) error {
+func (l *l2cap) handleL2CAP(b []byte) error {
 	a := &aclData{}
-	if err := a.Unmarshal(b); err != nil {
+	if err := a.unmarshal(b); err != nil {
 		return err
 	}
 	l.connsmu.Lock()
 	defer l.connsmu.Unlock()
-	if c, found := l.conns[a.handle]; found {
+	if c, found := l.conns[a.attr]; found {
 		c.aclc <- a
 		return nil
 	}
 	return nil
 }
 
-func (l *L2CAP) ConnC() chan *Conn {
-	return l.acceptc
-}
-
-func (l *L2CAP) Close() error {
+func (l *l2cap) Close() error {
 	l.trace("l2cap: Close()")
-	close(l.acceptc)
 	for _, c := range l.conns {
 		c.Close()
 	}
 	return nil
 }
 
-func (l *L2CAP) trace(fmt string, v ...interface{}) {
-	if l.logger == nil {
-		return
-	}
-	l.logger.Printf(fmt, v...)
+func (l *l2cap) trace(fmt string, v ...interface{}) {}
+
+type conn struct {
+	l2c   *l2cap
+	attr  uint16
+	aclc  chan *aclData
+	param *leConnectionCompleteEP
+	seq   int
 }
 
-type Conn struct {
-	l2c    *L2CAP
-	handle uint16
-	aclc   chan *aclData
-	Param  *event.LEConnectionCompleteEP
-	seq    int
-}
-
-func newConn(l *L2CAP, h uint16, ep *event.LEConnectionCompleteEP, seq int) *Conn {
+func newConn(l *l2cap, h uint16, ep *leConnectionCompleteEP, seq int) *conn {
 	l.trace("l2conn: 0x%04X connected, seq :%d", h, seq)
-	return &Conn{
-		l2c:    l,
-		handle: h,
-		Param:  ep,
-		aclc:   make(chan *aclData),
-		seq:    seq,
+	return &conn{
+		l2c:   l,
+		attr:  h,
+		param: ep,
+		aclc:  make(chan *aclData),
+		seq:   seq,
 	}
 }
 
-// write writes the L2CAP payload to the controller.
-// It first prepend the L2CAP header (4-bytes), and diassemble the payload
-// if it is larger than the HCI LE buffer size that the conntroller can support.
-func (c *Conn) write(cid int, b []byte) (int, error) {
-	flag := uint8(0) // ACL data continuation flag
-	tlen := len(b)   // Total length of the L2CAP payload
-
-	w := append(
-		[]byte{
-			0,    // packet type
-			0, 0, // handle
-			0, 0, // dlen
-			uint8(tlen), uint8(tlen >> 8), // L2CAP header
-			uint8(cid), uint8(cid >> 8), // L2CAP header
-		}, b...)
-
-	n := 4 + tlen // L2CAP header + L2CAP payload
-	for n > 0 {
-		dlen := n
-		if dlen > c.l2c.bufSize {
-			dlen = c.l2c.bufSize
-		}
-		w[0] = 0x02 // packetTypeACL
-		w[1] = uint8(c.handle)
-		w[2] = uint8(c.handle>>8) | flag
-		w[3] = uint8(dlen)
-		w[4] = uint8(dlen >> 8)
-
-		// make sure we don't send more buffers than the controller can handdle
-		c.l2c.bufCnt <- struct{}{}
-
-		c.l2c.dev.Write(w[:5+dlen])
-		w = w[dlen:] // advance the pointer to the next segment, if any.
-		flag = 0x10  // the rest of iterations handle continued segments, if any.
-		n -= dlen
-	}
-
-	return len(b), nil
-}
-
-func (c *Conn) UpdateConnection() (int, error) {
+func (c *conn) updateConnection() (int, error) {
 	b := []byte{
 		0x12,       // Code (Connection Param Update)
 		0x02,       // ID
@@ -258,7 +192,48 @@ func (c *Conn) UpdateConnection() (int, error) {
 	return c.write(0x05, b)
 }
 
-func (c *Conn) Read(b []byte) (int, error) {
+// write writes the l2cap payload to the controller.
+// It first prepend the l2cap header (4-bytes), and diassemble the payload
+// if it is larger than the HCI LE buffer size that the conntroller can support.
+func (c *conn) write(cid int, b []byte) (int, error) {
+	flag := uint8(0) // ACL data continuation flag
+	tlen := len(b)   // Total length of the l2cap payload
+
+	log.Printf("W: [ % X ]", b)
+	w := append(
+		[]byte{
+			0,    // packet type
+			0, 0, // attr
+			0, 0, // dlen
+			uint8(tlen), uint8(tlen >> 8), // l2cap header
+			uint8(cid), uint8(cid >> 8), // l2cap header
+		}, b...)
+
+	n := 4 + tlen // l2cap header + l2cap payload
+	for n > 0 {
+		dlen := n
+		if dlen > c.l2c.bufSize {
+			dlen = c.l2c.bufSize
+		}
+		w[0] = 0x02 // packetTypeACL
+		w[1] = uint8(c.attr)
+		w[2] = uint8(c.attr>>8) | flag
+		w[3] = uint8(dlen)
+		w[4] = uint8(dlen >> 8)
+
+		// make sure we don't send more buffers than the controller can handdle
+		c.l2c.bufCnt <- struct{}{}
+
+		c.l2c.hci.d.Write(w[:5+dlen])
+		w = w[dlen:] // advance the pointer to the next segment, if any.
+		flag = 0x10  // the rest of iterations attr continued segments, if any.
+		n -= dlen
+	}
+
+	return len(b), nil
+}
+
+func (c *conn) Read(b []byte) (int, error) {
 	a, ok := <-c.aclc
 	if !ok {
 		return 0, io.EOF
@@ -268,11 +243,11 @@ func (c *Conn) Read(b []byte) (int, error) {
 	if tlen > len(b) {
 		return 0, io.ErrShortBuffer
 	}
-	d := a.b[4:] // skip L2CAP header
+	d := a.b[4:] // skip l2cap header
 	copy(b, d)
 	n := len(d)
 
-	// Keep receiving and reassemble continued L2CAP segments
+	// Keep receiving and reassemble continued l2cap segments
 	for n != tlen {
 		if a, ok = <-c.aclc; !ok || (a.flags&0x1) == 0 {
 			return n, io.ErrUnexpectedEOF
@@ -280,18 +255,19 @@ func (c *Conn) Read(b []byte) (int, error) {
 		copy(b[n:], a.b)
 		n += len(a.b)
 	}
+	log.Printf("R: [ % X ]", b[:n])
 	return n, nil
 }
 
-func (c *Conn) Write(b []byte) (int, error) {
+func (c *conn) Write(b []byte) (int, error) {
 	return c.write(0x04, b)
 }
 
 // Close disconnects the connection by sending HCI disconnect command to the device.
-func (c *Conn) Close() error {
+func (c *conn) Close() error {
 	l := c.l2c
-	h := c.handle
-	l.trace("l2conn: disconnct 0x%04X, seq: %d", c.handle, c.seq)
+	h := c.attr
+	l.trace("l2conn: disconnct 0x%04X, seq: %d", c.attr, c.seq)
 	l.connsmu.Lock()
 	defer l.connsmu.Unlock()
 	cc, found := l.conns[h]
@@ -302,7 +278,7 @@ func (c *Conn) Close() error {
 		l.trace("l2conn: 0x%04X seq mismatch %d/%d", h, c.seq, cc.seq)
 		return nil
 	}
-	if err, _ := l.cmd.Send(cmd.Disconnect{ConnectionHandle: h, Reason: 0x13}); err != nil {
+	if err, _ := l.hci.c.send(disconnect{connectionHandle: h, reason: 0x13}); err != nil {
 		l.trace("l2conn: failed to disconnect, %s", err)
 	}
 	return nil

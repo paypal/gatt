@@ -32,8 +32,8 @@ const (
 )
 
 var (
-	ErrSocketOpenFailed  = errors.New("Unable to open bluetooth socket to device")
-	ErrSocketBindTimeout = errors.New("Timeout occured binding to bluetooth device")
+	ErrSocketOpenFailed  = errors.New("unable to open bluetooth socket to device")
+	ErrSocketBindTimeout = errors.New("timeout occured binding to bluetooth device")
 )
 
 type _Socklen uint32
@@ -129,7 +129,7 @@ const (
 type HCIFilter struct {
 	TypeMask  uint32
 	EventMask [2]uint32
-	Opcode    uint16
+	opcode    uint16
 }
 
 func SetsockoptFilter(fd int, f *HCIFilter) (err error) {

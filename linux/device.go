@@ -1,4 +1,4 @@
-package device
+package linux
 
 import (
 	"io"
@@ -6,7 +6,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/paypal/gatt/linux/internal/socket"
+	"github.com/paypal/gatt/linux/socket"
 )
 
 type device struct {
@@ -15,7 +15,7 @@ type device struct {
 	wmu *sync.Mutex
 }
 
-func NewSocket(n int) (io.ReadWriteCloser, error) {
+func newSocket(n int) (io.ReadWriteCloser, error) {
 	fd, err := socket.Socket(socket.AF_BLUETOOTH, syscall.SOCK_RAW, socket.BTPROTO_HCI)
 
 	// attempt to use the linux 3.14 feature, if this fails with EINVAL fall back to raw access
@@ -39,7 +39,7 @@ func NewSocket(n int) (io.ReadWriteCloser, error) {
 	}, nil
 }
 
-func NewDevice(path string) (io.ReadWriteCloser, error) {
+func newDevice(path string) (io.ReadWriteCloser, error) {
 	fd, err := syscall.Open(path, os.O_RDWR, 700)
 	if err != nil {
 		return nil, err
