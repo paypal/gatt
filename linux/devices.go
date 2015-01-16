@@ -1,99 +1,58 @@
 package linux
 
-import (
-	"fmt"
-	"syscall"
-	"unsafe"
-
-	"github.com/paypal/gatt/linux/gioctl"
-	"github.com/paypal/gatt/linux/socket"
-)
+import "github.com/paypal/gatt/linux/gioctl"
 
 const (
-	IOCTLSize            = uintptr(4)
-	HCIGetDeviceListCode = 72
-	HCIMaxDevices        = 16
+	ioctlSize     = uintptr(4)
+	hciMaxDevices = 16
+	typHCI        = 72 // 'H'
 )
 
 var (
-	HCIGetDeviceList = gioctl.IoR(HCIGetDeviceListCode, 210, IOCTLSize) // HCIGETDEVLIST
-	HCIGetDeviceInfo = gioctl.IoR(HCIGetDeviceListCode, 211, IOCTLSize) // HCIGETDEVINFO
+	hciUpDevice      = gioctl.IoW(typHCI, 201, ioctlSize) // HCIDEVUP
+	hciDownDevice    = gioctl.IoW(typHCI, 202, ioctlSize) // HCIDEVDOWN
+	hciResetDevice   = gioctl.IoW(typHCI, 203, ioctlSize) // HCIDEVRESET
+	hciGetDeviceList = gioctl.IoR(typHCI, 210, ioctlSize) // HCIGETDEVLIST
+	hciGetDeviceInfo = gioctl.IoR(typHCI, 211, ioctlSize) // HCIGETDEVINFO
 )
 
-type HCIDeviceRequest struct {
-	DevId  uint16
-	DevOpt uint32
+type devRequest struct {
+	id  uint16
+	opt uint32
 }
 
-type HCIDeviceListRequest struct {
-	DevNum     uint16
-	DevRequest [HCIMaxDevices]HCIDeviceRequest
+type devListRequest struct {
+	devNum     uint16
+	devRequest [hciMaxDevices]devRequest
 }
 
-type HCIDeviceInfo struct {
-	DevId uint16
-	name  [8]byte
+type hciDevInfo struct {
+	id         uint16
+	name       [8]byte
+	bdaddr     [6]byte
+	flags      uint32
+	devType    uint8
+	features   [8]uint8
+	pktType    uint32
+	linkPolicy uint32
+	linkMode   uint32
+	aclMtu     uint16
+	aclPkts    uint16
+	scoMtu     uint16
+	scoPkts    uint16
 
-	btAddr [6]byte
-
-	Flags   uint32
-	DevType uint8
-
-	Features [8]uint8
-
-	PktType    uint32
-	LinkPolicy uint32
-	LinkMode   uint32
-
-	AclMtu  uint16
-	AclPkts uint16
-	ScoMtu  uint16
-	ScoPkts uint16
-
-	Stats HCIDeviceStats
+	stats hciDevStats
 }
 
-func (hdi *HCIDeviceInfo) Name() string {
-	return string(hdi.name[:])
-}
-
-func (hdi *HCIDeviceInfo) Addr() string {
-	return fmt.Sprintf("%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
-		hdi.btAddr[5], hdi.btAddr[4], hdi.btAddr[3], hdi.btAddr[2], hdi.btAddr[1], hdi.btAddr[0]) // yeah backwards, who knew right!?
-}
-
-type HCIDeviceStats struct {
-	ErrRx  uint32
-	ErrTx  uint32
-	CmdTx  uint32
-	EvtRx  uint32
-	AclTx  uint32
-	AclRx  uint32
-	ScoTx  uint32
-	ScoRx  uint32
-	ByteRx uint32
-	ByteTx uint32
-}
-
-func GetDeviceList() ([]*HCIDeviceInfo, error) {
-	fd, err := syscall.Socket(socket.AF_BLUETOOTH, syscall.SOCK_RAW, socket.BTPROTO_HCI)
-	if err != nil {
-		return nil, err
-	}
-
-	req := HCIDeviceListRequest{DevNum: HCIMaxDevices}
-	if err := gioctl.Ioctl(uintptr(fd), HCIGetDeviceList, uintptr(unsafe.Pointer(&req))); err != nil {
-		return nil, err
-	}
-
-	dd := []*HCIDeviceInfo{}
-	for i := 0; i < int(req.DevNum); i++ {
-		// TODO check status of device
-		i := HCIDeviceInfo{DevId: uint16(i)}
-		if err := gioctl.Ioctl(uintptr(fd), HCIGetDeviceInfo, uintptr(unsafe.Pointer(&i))); err != nil {
-			return dd, err
-		}
-		dd = append(dd, &i)
-	}
-	return dd, nil
+type hciDevStats struct {
+	errRx  uint32
+	errTx  uint32
+	cmdTx  uint32
+	evtRx  uint32
+	aclTx  uint32
+	aclRx  uint32
+	scoTx  uint32
+	scoRx  uint32
+	byteRx uint32
+	byteTx uint32
 }
