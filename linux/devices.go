@@ -1,12 +1,12 @@
-package hci
+package linux
 
 import (
 	"fmt"
 	"syscall"
 	"unsafe"
 
-	"github.com/paypal/gatt/linux/internal/socket"
-	"github.com/wolfeidau/gioctl"
+	"github.com/paypal/gatt/linux/gioctl"
+	"github.com/paypal/gatt/linux/socket"
 )
 
 const (
@@ -75,55 +75,25 @@ type HCIDeviceStats struct {
 	ByteTx uint32
 }
 
-type hciRequest struct {
-	ogf    uint16
-	ocf    uint16
-	event  int
-	cparam uintptr
-	clen   int
-	rparam uintptr
-	rlen   int
-}
-
-type leSetAdvertiseEnable struct {
-	enable uint8
-}
-
 func GetDeviceList() ([]*HCIDeviceInfo, error) {
-
-	var (
-		devList    []*HCIDeviceInfo
-		devListReq HCIDeviceListRequest
-	)
-
 	fd, err := syscall.Socket(socket.AF_BLUETOOTH, syscall.SOCK_RAW, socket.BTPROTO_HCI)
-
 	if err != nil {
-		return devList, err
+		return nil, err
 	}
 
-	devListReq.DevNum = HCIMaxDevices
-
-	err = gioctl.Ioctl(uintptr(fd), HCIGetDeviceList, uintptr(unsafe.Pointer(&devListReq)))
-
-	if err != nil {
-		return devList, err
+	req := HCIDeviceListRequest{DevNum: HCIMaxDevices}
+	if err := gioctl.Ioctl(uintptr(fd), HCIGetDeviceList, uintptr(unsafe.Pointer(&req))); err != nil {
+		return nil, err
 	}
 
-	for i := 0; i < int(devListReq.DevNum); i++ {
+	dd := []*HCIDeviceInfo{}
+	for i := 0; i < int(req.DevNum); i++ {
 		// TODO check status of device
-		var deviceInfo HCIDeviceInfo
-
-		deviceInfo.DevId = uint16(i)
-
-		err = gioctl.Ioctl(uintptr(fd), HCIGetDeviceInfo, uintptr(unsafe.Pointer(&deviceInfo)))
-
-		if err != nil {
-			return devList, err
+		i := HCIDeviceInfo{DevId: uint16(i)}
+		if err := gioctl.Ioctl(uintptr(fd), HCIGetDeviceInfo, uintptr(unsafe.Pointer(&i))); err != nil {
+			return dd, err
 		}
-
-		devList = append(devList, &deviceInfo)
+		dd = append(dd, &i)
 	}
-
-	return devList, nil
+	return dd, nil
 }

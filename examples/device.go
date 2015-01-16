@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/paypal/gatt/linux/internal/hci"
+	"../../gatt/linux"
 )
 
 func main() {
-	res, err := hci.GetDeviceList()
+	res, err := linux.GetDeviceList()
 	if err != nil {
 		log.Fatalf("error retrieving bluetooth device list - %v", err)
 	}
