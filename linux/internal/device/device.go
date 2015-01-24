@@ -17,8 +17,18 @@ type device struct {
 
 func NewSocket(n int) (io.ReadWriteCloser, error) {
 	fd, err := socket.Socket(socket.AF_BLUETOOTH, syscall.SOCK_RAW, socket.BTPROTO_HCI)
+
+	// attempt to use the linux 3.14 feature, if this fails with EINVAL fall back to raw access
+	// on older kernels
 	sa := socket.SockaddrHCI{Dev: n, Channel: socket.HCI_CHANNEL_USER}
-	if err = socket.Bind(fd, &sa); err != nil {
+	if err = socket.Bind(fd, &sa); err == syscall.EINVAL {
+		sa := socket.SockaddrHCI{Dev: n, Channel: socket.HCI_CHANNEL_RAW}
+		if err = socket.Bind(fd, &sa); err != nil {
+			return nil, err
+		}
+	}
+
+	if err != nil {
 		return nil, err
 	}
 
