@@ -1,4 +1,4 @@
-package goble
+package xpc
 
 import (
 	"testing"
