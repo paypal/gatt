@@ -85,7 +85,7 @@ func (w *l2capWriter) WriteUint16Fit(v uint16) bool {
 // It reports whether the write succeeded, using the
 // criteria of WriteFit.
 func (w *l2capWriter) WriteUUIDFit(u UUID) bool {
-	return w.WriteFit(u.reverseBytes())
+	return w.WriteFit(u.b)
 }
 
 // Writeable returns the number of bytes from b
@@ -125,33 +125,6 @@ func (w *l2capWriter) WriteFit(b []byte) bool {
 	w.b = append(w.b, b[:avail]...)
 	return false
 }
-
-/*** TODO: Is this useful?
-
-// appendFit appends n bytes, and returns them as a slice.
-// It reports whether the append succeeded without
-// truncation. An append succeeds without truncation
-// iff a chunk write is in progress or the
-// entire append could occur without
-// going over the mtu.
-// appendFit is used for efficient, alloc-free writes
-// by other unexported methods.
-func (w *l2capWriter) appendFit(n int) ([]byte, bool) {
-	b := make([]byte, n)
-	if w.chunked {
-		w.chunk = append(w.chunk, b...)
-		return w.chunk[len(w.chunk)-n:], true
-	}
-	avail := w.mtu - len(w.b)
-	if avail >= n {
-		w.b = append(w.b, b...)
-		return w.b[len(w.b)-n:], true
-	}
-	w.b = append(w.b, b[:avail]...)
-	return w.b[len(w.b)-avail:], false
-}
-
-***/
 
 // ChunkSeek discards the first offset bytes from the
 // current chunk. It reports whether there were at least

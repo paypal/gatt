@@ -18,7 +18,7 @@ type UUID struct {
 // UUID16 converts a uint16 (such as 0x1800) to a UUID.
 func UUID16(i uint16) UUID {
 	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, i)
+	binary.LittleEndian.PutUint16(b, i)
 	return UUID{b}
 }
 
@@ -33,7 +33,7 @@ func ParseUUID(s string) (UUID, error) {
 	if err := lenErr(len(b)); err != nil {
 		return UUID{}, err
 	}
-	return UUID{b}, nil
+	return UUID{reverse(b)}, nil
 }
 
 // MustParseUUID parses a standard-format UUID string,
@@ -63,25 +63,21 @@ func (u UUID) Len() int {
 
 // String hex-encodes a UUID.
 func (u UUID) String() string {
-	return fmt.Sprintf("%x", u.b)
+	return fmt.Sprintf("%x", reverse(u.b))
 }
 
-// reverseBytes returns a reversed copy of u's bytes.
-func (u UUID) reverseBytes() []byte {
-	// Special-case 16 bit UUIDS for speed.
-	if u.Len() == 2 {
-		return []byte{u.b[1], u.b[0]}
-	}
-	return reverse(u.b)
-}
-
-func uuidEqual(u, v UUID) bool {
+// Equal returns a boolean reporting whether v represent the same UUID as u.
+func (u UUID) Equal(v UUID) bool {
 	return bytes.Equal(u.b, v.b)
 }
 
 // reverse returns a reversed copy of u.
 func reverse(u []byte) []byte {
+	// Special-case 16 bit UUIDS for speed.
 	l := len(u)
+	if l == 2 {
+		return []byte{u[1], u[0]}
+	}
 	b := make([]byte, l)
 	for i := 0; i < l/2+1; i++ {
 		b[i], b[l-i-1] = u[l-i-1], u[i]

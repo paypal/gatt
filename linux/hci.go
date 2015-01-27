@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"sync"
-	"time"
 )
 
 type HCI struct {
-	AcceptMasterHandler  func(l2c io.ReadWriteCloser, addr net.HardwareAddr)
-	AcceptSlaveHandler   func(l2c io.ReadWriteCloser, pd *PlatData)
+	AcceptMasterHandler  func(pd *PlatData)
+	AcceptSlaveHandler   func(pd *PlatData)
 	AdvertisementHandler func(pd *PlatData)
 
 	d io.ReadWriteCloser
@@ -32,18 +30,15 @@ type PlatData struct {
 	Data        []byte
 	Connectable bool
 	RSSI        int8
+	Master      bool
 
-	conn io.ReadWriteCloser
-	ts   time.Time
+	Conn io.ReadWriteCloser
 }
 
-func NewHCI(maxConn int) (*HCI, error) {
-	d, err := newSocket(1)
+func NewHCI(devID int, chk bool, maxConn int) (*HCI, error) {
+	d, err := newDevice(devID, chk)
 	if err != nil {
-		d, err = newSocket(0)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	c := newCmd(d)
 	l := newL2CAP(maxConn)
@@ -72,28 +67,17 @@ func NewHCI(maxConn int) (*HCI, error) {
 
 func (h *HCI) Close() error { return h.d.Close() }
 
-func (h *HCI) Advertise() error {
-	return h.c.sendAndCheckResp(leSetAdvertiseEnable{advertisingEnable: 1}, []byte{0x00})
-}
-
-func (h *HCI) StopAdvertising() error {
-	return h.c.sendAndCheckResp(leSetAdvertiseEnable{advertisingEnable: 0}, []byte{0x00})
-}
-
 func (h *HCI) SetAdvertisingParameters(intMin, intMax uint16, chnlMap uint8) error {
 	return h.c.sendAndCheckResp(
 		leSetAdvertisingParameters{
-			advertisingIntervalMin: intMin,
-			advertisingIntervalMax: intMax,
-			advertisingChannelMap:  chnlMap,
-		}, []byte{0x00})
-}
-
-func (h *HCI) SetScanResponsePacket(n uint8, data [31]byte) error {
-	return h.c.sendAndCheckResp(
-		leSetScanResponseData{
-			scanResponseDataLength: n,
-			scanResponseData:       data,
+			advertisingIntervalMin:  intMin,    // [0x0800]: 0.625 ms * 0x0800 = 1280.0 ms
+			advertisingIntervalMax:  intMax,    // [0x0800]: 0.625 ms * 0x0800 = 1280.0 ms
+			advertisingType:         0x00,      // [0x00]: ADV_IND, 0x01: DIRECT(HIGH), 0x02: SCAN, 0x03: NONCONN, 0x04: DIRECT(LOW)
+			ownAddressType:          0x00,      // [0x00]: public, 0x01: random
+			directAddressType:       0x00,      // [0x00]: public, 0x01: random
+			directAddress:           [6]byte{}, // Public or Random Address of the device to be connected
+			advertisingChannelMap:   chnlMap,   // [0x07] 0x01: ch37, 0x2: ch38, 0x4: ch39
+			advertisingFilterPolicy: 0x00,
 		}, []byte{0x00})
 }
 
@@ -105,31 +89,38 @@ func (h *HCI) SetAdvertisingData(n uint8, data [31]byte) error {
 		}, []byte{0x00})
 }
 
-func (h *HCI) Ping() error { return h.c.sendAndCheckResp(leReadBufferSize{}, []byte{0x00}) }
-
-func (h *HCI) Scan() error {
-	// TODO: move to a separate function.
-	h.c.sendAndCheckResp(
-		leSetScanParameters{
-			leScanType:           0x01,   // [0x00]: passive, 0x01: active
-			leScanInterval:       0x0010, // [0x10]: 0.625ms * 16
-			leScanWindow:         0x0010, // [0x10]: 0.625ms *16
-			ownAddressType:       0x00,   // [0x00]: public, 0x01: random
-			scanningFilterPolicy: 0x00,   // [0x00]: accept all, 0x01: ignore non-white-listed.
-		}, []byte{0x00})
-
+func (h *HCI) SetAdvertiseEnable(en bool) error {
 	return h.c.sendAndCheckResp(
-		leSetScanEnable{
-			leScanEnable:     1,
-			filterDuplicates: 1,
+		leSetAdvertiseEnable{
+			advertisingEnable: btoi(en),
 		}, []byte{0x00})
 }
 
-func (h *HCI) StopScan() error {
+func (h *HCI) SetScanResponsePacket(n uint8, data [31]byte) error {
+	return h.c.sendAndCheckResp(
+		leSetScanResponseData{
+			scanResponseDataLength: n,
+			scanResponseData:       data,
+		}, []byte{0x00})
+}
+
+func (h *HCI) SetScanParameters() error {
+	return h.c.sendAndCheckResp(
+		leSetScanParameters{
+			leScanType:           0x01,   // [0x00]: passive, 0x01: active
+			leScanInterval:       0x0010, // [0x10]: 0.625ms * 16
+			leScanWindow:         0x0010, // [0x10]: 0.625ms * 16
+			ownAddressType:       0x00,   // [0x00]: public, 0x01: random
+			scanningFilterPolicy: 0x00,   // [0x00]: accept all, 0x01: ignore non-white-listed.
+		}, []byte{0x00})
+}
+
+func (h *HCI) SetScanEnable(en bool, dup bool) error {
+	h.SetScanParameters()
 	return h.c.sendAndCheckResp(
 		leSetScanEnable{
-			leScanEnable:     0,
-			filterDuplicates: 1,
+			leScanEnable:     btoi(en),
+			filterDuplicates: btoi(dup),
 		}, []byte{0x00})
 }
 
@@ -153,7 +144,20 @@ func (h *HCI) Connect(pd *PlatData) error {
 }
 
 func (h *HCI) CancelConnection(pd *PlatData) error {
-	return pd.conn.Close()
+	return pd.Conn.Close()
+}
+
+func (h *HCI) Ping() error {
+	return h.c.sendAndCheckResp(
+		leReadBufferSize{},
+		[]byte{0x00})
+}
+
+func btoi(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (h *HCI) mainLoop() {
@@ -254,7 +258,6 @@ func (h *HCI) handleAdvertisement(b []byte) {
 			Data:        ep.data[i],
 			Connectable: connectable,
 			RSSI:        ep.rssi[i],
-			ts:          time.Now(),
 		}
 		h.plistmu.Lock()
 		h.plist[addr] = pd
@@ -268,18 +271,18 @@ func (h *HCI) handleAdvertisement(b []byte) {
 
 func (h *HCI) handleConnection(c io.ReadWriteCloser, addr bdaddr, master bool) {
 	if master {
-		if h.AcceptMasterHandler == nil {
-			return
+		pd := &PlatData{
+			Address: addr,
+			Conn:    c,
+			Master:  master,
 		}
-		h.AcceptMasterHandler(c, net.HardwareAddr(addr[:]))
-		return
-	}
-	if h.AcceptSlaveHandler == nil {
+		h.AcceptMasterHandler(pd)
 		return
 	}
 	h.plistmu.Lock()
 	pd := h.plist[addr]
 	h.plistmu.Unlock()
-	pd.conn = c
-	h.AcceptSlaveHandler(c, pd)
+	pd.Conn = c
+	pd.Master = master
+	h.AcceptSlaveHandler(pd)
 }

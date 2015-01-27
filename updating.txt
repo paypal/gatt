@@ -1,0 +1,48 @@
+
+Changes for Device
+    * Device is a new lower level abstraction that should encapsulate plaform
+      specific as much possible.
+
+    * Add device options to initialize or conduct platform specific functions.
+
+    * Improve HCI device probing.(Thanks to @wolfeidau's contribution.)
+
+Changes for Server (Peripheral Manager):
+
+	* Advertising and services in databases are now decoupled.
+	  User have more controls over which UUID or content they'd like to advertise.
+	
+	* Add iBeacon advertising API.
+
+	* Add support for descriptors. Extend the handler mechanism from characteristic
+	  to descriptor.
+
+	* Add SetValue() for assiging static value for caracteristics and descriptors.
+
+	* Export characteristic properties since they are used in clients.
+ 
+    * Rework the original "handle" into "attr", which represent the attribute table.
+
+    * Add Mac Port.
+      Unlike acting as client, which seems more consisten across different platforms,
+      acting as Peripheral on OSX has more descepency than on Linux.
+      Core bluetooth abstracts device and exports convenient but also confined high
+      level API for users. For example, it doesn't export the "connection" level, but
+      "transaction" or "request" only. This is largely different from how we work
+      with Linux on L2CAP connection. It doesn't provide disconnecting function.
+      Advertising also has less flexible than we could provide on Linux.
+      This is understood as it expect the user should be a good citizen sharing the
+      resource with other apps. 
+
+Changes for Client (Central Manager):
+
+	The API favors synchronous flavor over asynchronous callbacks.
+	After all, it's easy in go to turn sync to async with goroutine & channel.
+
+Test:
+	Test are left off in this commit, will catch up when the changes are more
+	stable.
+
+Thanks to: 
+  @raff's [goble] for the XPC implementation. 
+  @sandeepmistry's [noble] for referencing how core bluetooth works.

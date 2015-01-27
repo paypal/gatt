@@ -62,7 +62,7 @@ func (l *l2cap) handleLEMeta(b []byte) error {
 	code := leEventCode(b[0])
 	switch code {
 	case leConnectionComplete:
-		l.hci.StopAdvertising()
+		l.hci.SetAdvertiseEnable(false)
 		ep := &leConnectionCompleteEP{}
 		if err := ep.unmarshal(b); err != nil {
 			return err
@@ -78,7 +78,7 @@ func (l *l2cap) handleLEMeta(b []byte) error {
 		l.conns[h] = c
 		go l.hci.handleConnection(c, c.param.peerAddress, ep.role == 0x01)
 		if len(l.conns) < l.maxConn {
-			l.hci.Advertise()
+			l.hci.SetAdvertiseEnable(true)
 		}
 
 		// FIXME: sloppiness. This call should be called by the package user once we
@@ -119,7 +119,7 @@ func (l *l2cap) handleDisconnectionComplete(b []byte) error {
 	l.trace("l2conn: 0x%04X disconnected, seq: %d", h, c.seq)
 	close(c.aclc)
 	if len(l.conns) == l.maxConn-1 {
-		l.hci.Advertise()
+		l.hci.SetAdvertiseEnable(true)
 	}
 	return nil
 }
