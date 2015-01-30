@@ -54,7 +54,8 @@ func (d Dict) MustGetInt(k string) int {
 }
 
 func (d Dict) MustGetUUID(k string) []byte {
-	return d[k].(uuid).b
+	u := d[k].(UUID)
+	return u[:]
 }
 
 func (d Dict) GetString(k, defv string) string {
@@ -99,7 +100,7 @@ func (a Array) GetUUID(k int) UUID {
 }
 
 // a UUID
-type UUID [16]byte
+type UUID []byte
 
 func MakeUUID(s string) UUID {
 	var sl []byte
@@ -107,11 +108,11 @@ func MakeUUID(s string) UUID {
 
 	var uuid [16]byte
 	copy(uuid[:], sl)
-	return UUID(uuid)
+	return UUID(uuid[:])
 }
 
 func (uuid UUID) String() string {
-	return fmt.Sprintf("%x", [16]byte(uuid))
+	return fmt.Sprintf("%x", []byte(uuid[:]))
 }
 
 func GetUUID(v interface{}) UUID {
@@ -306,7 +307,7 @@ func xpcToGo(v C.xpc_object_t) interface{} {
 	case C.TYPE_UUID:
 		a := [16]byte{}
 		C.XpcUUIDGetBytes(unsafe.Pointer(&a), v)
-		return UUID(a)
+		return UUID(a[:])
 
 	default:
 		log.Fatalf("unexpected type %#v, value %#v", t, v)
