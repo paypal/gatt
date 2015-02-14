@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/paypal/gatt/linux"
 )
@@ -34,7 +35,7 @@ type peripheral struct {
 }
 
 func (p *peripheral) Device() Device       { return p.d }
-func (p *peripheral) ID() string           { return net.HardwareAddr(p.pd.Address[:]).String() }
+func (p *peripheral) ID() string           { return strings.ToUpper(net.HardwareAddr(p.pd.Address[:]).String()) }
 func (p *peripheral) Name() string         { return p.pd.Name }
 func (p *peripheral) Services() []*Service { return p.svcs }
 
