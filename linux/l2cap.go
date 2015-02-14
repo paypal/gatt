@@ -3,6 +3,7 @@ package linux
 import (
 	"fmt"
 	"io"
+	"log"
 
 	"github.com/paypal/gatt/linux/cmd"
 )
@@ -101,7 +102,6 @@ func (c *conn) Read(b []byte) (int, error) {
 	if !ok {
 		return 0, io.EOF
 	}
-
 	tlen := int(uint16(a.b[0]) | uint16(a.b[1])<<8)
 	if tlen > len(b) {
 		return 0, io.ErrShortBuffer
@@ -167,3 +167,8 @@ func (c *conn) Close() error {
 // 0x14 LE Credit Based Connection request		0x0005
 // 0x15 LE Credit Based Connection response		0x0005
 // 0x16 LE Flow Control Credit					0x0005
+func (c *conn) handleSignal(a *aclData) error {
+	log.Printf("ignore l2cap signal:[ % X ]", a.b)
+	// FIXME: handle LE signaling channel (CID: 5)
+	return nil
+}

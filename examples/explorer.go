@@ -41,6 +41,7 @@ func onPeriphDiscovered(p gatt.Peripheral, a *gatt.Advertisement, rssi int) {
 	fmt.Println("  TX Power Level    =", a.TxPowerLevel)
 	fmt.Println("  Manufacturer Data =", a.ManufacturerData)
 	fmt.Println("  Service Data      =", a.ServiceData)
+	fmt.Println("")
 
 	p.Device().Connect(p)
 }
