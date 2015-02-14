@@ -149,10 +149,6 @@ func (h *HCI) CancelConnection(pd *PlatData) error {
 	return pd.Conn.Close()
 }
 
-func (h *HCI) Ping() error {
-	return h.c.SendAndCheckResp(cmd.LEReadBufferSize{}, []byte{0x00})
-}
-
 func (h *HCI) SendRawCommand(c cmd.CmdParam) ([]byte, error) {
 	return h.c.Send(c)
 }

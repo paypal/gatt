@@ -3,7 +3,6 @@ package gatt
 import (
 	"encoding/binary"
 	"net"
-	"time"
 
 	"github.com/paypal/gatt/linux"
 	"github.com/paypal/gatt/linux/cmd"
@@ -13,7 +12,6 @@ type device struct {
 	deviceHandler
 
 	hci   *linux.HCI
-	hb    bool // heartbeat, ping HCI device periodically
 	state State
 
 	// All the following fields are only used peripheralManager (server) implementation.
@@ -103,9 +101,6 @@ func (d *device) Init(f func(Device, State)) error {
 			pd.Name = a.LocalName
 			d.peripheralDiscovered(p, a, int(pd.RSSI))
 		}
-	}
-	if d.hb {
-		go d.heartbeat()
 	}
 	d.state = StatePoweredOn
 	d.stateChanged = f
@@ -219,21 +214,6 @@ func (d *device) CancelConnection(p Peripheral) {
 
 func (d *device) SendHCIRawCommand(c cmd.CmdParam) ([]byte, error) {
 	return d.hci.SendRawCommand(c)
-}
-
-// FIXME: this got one of my BLE dongle mad sometimes. Need to figure out why.
-// heartbeat monitors the status of the BLE controller
-func (d *device) heartbeat() {
-	// Send a HCI command to controller periodically, if we don't get response
-	// for a while, close the server to notify upper layer.
-	t := time.AfterFunc(time.Second*30, func() {
-		d.hci.Close()
-		d.stateChanged(d, StateUnknown)
-	})
-	for _ = range time.Tick(time.Second * 15) {
-		d.hci.Ping()
-		t.Reset(time.Second * 30)
-	}
 }
 
 // Flush pending advertising settings to the device.
