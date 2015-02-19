@@ -29,9 +29,9 @@ func main() {
 		switch s {
 		case gatt.StatePoweredOn:
 			// Setup GAP and GATT services for Linux implementation.
-			// OSX doesn't export the access of these services.
-			d.AddService(service.NewGapService("Gopher")) // no effect on OSX
-			d.AddService(service.NewGattService())        // no effect on OSX
+			// OS X doesn't export the access of these services.
+			d.AddService(service.NewGapService("Gopher")) // no effect on OS X
+			d.AddService(service.NewGattService())        // no effect on OS X
 
 			// A simple count service for demo.
 			s1 := service.NewCountService()

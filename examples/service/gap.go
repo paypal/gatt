@@ -15,7 +15,7 @@ var (
 // https://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.gap.appearance.xml
 var gapCharAppearanceGenericComputer = []byte{0x00, 0x80}
 
-// NOTE: OSX provides GAP and GATT services, and they can't be customized.
+// NOTE: OS X provides GAP and GATT services, and they can't be customized.
 // For Linux/Embedded, however, this is something we want to fully control.
 func NewGapService(name string) *gatt.Service {
 	s := gatt.NewService(attrGAPUUID)

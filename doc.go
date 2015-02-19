@@ -13,7 +13,7 @@
 //
 // SETUP
 //
-// gatt supports both Linux and OSX.
+// gatt supports both Linux and OS X.
 //
 // On Linux:
 // To gain complete and exclusive control of the HCI device, gatt uses
@@ -48,9 +48,18 @@
 //
 // USAGE
 //
+//     # Start a simple server.
+//     sudo go run example/server.go
+//
+//     # Discover surrounding peripherals.
+//     sudo go run example/discoverer.go
+//
+//     # Connect to and explorer a peripheral device.
+//     sudo go run example/explorer.go <peripheral ID>
+//
 // See the server.go, discoverer.go, and explorer.go in the examples/
-// directory for writing server or client programs that run on both Linux
-// and OSX.
+// directory for writing server or client programs that run on Linux
+// and OS X.
 //
 // Users, especially on Linux platforms, seeking finer-grained control
 // over the devices can see the examples/server_lnx.go for the usage

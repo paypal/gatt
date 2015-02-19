@@ -298,7 +298,7 @@ func searchService(ss []*Service, start, end uint16) *Service {
 	return nil
 }
 
-// TODO: unifiy the message with OSX pots and refactor
+// TODO: unifiy the message with OS X pots and refactor
 type message struct {
 	op   byte
 	b    []byte

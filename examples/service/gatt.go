@@ -11,7 +11,7 @@ var (
 	attrServiceChangedUUID = gatt.UUID16(0x2A05)
 )
 
-// NOTE: OSX provides GAP and GATT services, and they can't be customized.
+// NOTE: OS X provides GAP and GATT services, and they can't be customized.
 // For Linux/Embedded, however, this is something we want to fully control.
 func NewGattService() *gatt.Service {
 	s := gatt.NewService(attrGATTUUID)

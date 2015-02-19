@@ -63,7 +63,7 @@ type Device interface {
 	// Scan discovers surounding remote peripherals that have the Service UUID specified in ss.
 	// If ss is set to nil, all devices scanned are reported.
 	// dup specifies weather duplicated advertisement should be reported or not.
-	// When a remote peripheral is discovered, the PeripheralDiscovered handler is called.
+	// When a remote peripheral is discovered, the PeripheralDiscovered Handler is called.
 	Scan(ss []UUID, dup bool)
 
 	// StopScanning stops scanning.
@@ -75,10 +75,10 @@ type Device interface {
 	// CancelConnection disconnects a remote peripheral.
 	CancelConnection(p Peripheral)
 
-	// Handle register the handler
-	Handle(h ...handler)
+	// Handle registers the specified handlers.
+	Handle(h ...Handler)
 
-	// Option provides a way to configure the device on different platforms.
+	// Option sets the options specified.
 	Option(o ...Option) error
 }
 
@@ -103,44 +103,49 @@ type deviceHandler struct {
 	peripheralDisconnected func(p Peripheral, err error)
 }
 
-type handler func(Device)
+// A Handler is a self-referential function, which registers the options specified.
+// See http://commandcenter.blogspot.com.au/2014/01/self-referential-functions-and-design.html for more discussion.
+type Handler func(Device)
 
 // Handle registers the specified handlers.
-func (d *device) Handle(hh ...handler) {
+func (d *device) Handle(hh ...Handler) {
 	for _, h := range hh {
 		h(d)
 	}
 }
 
-// CentralConnected sets a function to be called when a device connects to the server.
-func CentralConnected(f func(Central)) handler {
+// CentralConnected returns a Handler, which sets the specified function to be called when a device connects to the server.
+func CentralConnected(f func(Central)) Handler {
 	return func(d Device) { d.(*device).centralConnected = f }
 }
 
-// CentralDisconnected sets a function to be called when a device disconnects from the server.
-func CentralDisconnected(f func(Central)) handler {
+// CentralDisconnected returns a Handler, which sets the specified function to be called when a device disconnects from the server.
+func CentralDisconnected(f func(Central)) Handler {
 	return func(d Device) { d.(*device).centralDisconnected = f }
 }
 
-// PeripheralDiscovered sets a function to be called when a remote peripheral device is found during scan procedure.
-func PeripheralDiscovered(f func(Peripheral, *Advertisement, int)) handler {
+// PeripheralDiscovered returns a Handler, which sets the specified function to be called when a remote peripheral device is found during scan procedure.
+func PeripheralDiscovered(f func(Peripheral, *Advertisement, int)) Handler {
 	return func(d Device) { d.(*device).peripheralDiscovered = f }
 }
 
-// PeripheralConnected sets a function to be called when a remote peripheral device connects.
-func PeripheralConnected(f func(Peripheral, error)) handler {
+// PeripheralConnected returns a Handler, which sets the specified function to be called when a remote peripheral device connects.
+func PeripheralConnected(f func(Peripheral, error)) Handler {
 	return func(d Device) { d.(*device).peripheralConnected = f }
 }
 
-// PeripheralDisconnected sets a function to be called when a remote peripheral device disconnects.
-func PeripheralDisconnected(f func(Peripheral, error)) handler {
+// PeripheralDisconnected returns a Handler, which sets the specified function to be called when a remote peripheral device disconnects.
+func PeripheralDisconnected(f func(Peripheral, error)) Handler {
 	return func(d Device) { d.(*device).peripheralDisconnected = f }
 }
 
-// Option provides a way to configure the device on different platforms.
+// An Option is a self-referential function, which sets the option specified.
+// Most Options are platform-specific, which gives more fine-grained control over the device at a cost of losing portibility.
+// See http://commandcenter.blogspot.com.au/2014/01/self-referential-functions-and-design.html for more discussion.
 type Option func(Device) error
 
 // Option sets the options specified.
+// Some options can only be set before the device is initialized; they are best used with NewDevice instead of Option.
 func (d *device) Option(opts ...Option) error {
 	var err error
 	for _, opt := range opts {

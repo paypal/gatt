@@ -1,6 +1,6 @@
 package xpc
 
-// Package xpc provides minimal OSX XPC support required for gatt
+// Package xpc provides minimal OS X XPC support required for gatt
 //
 // This is integrated from [goble], by Raffaele Sena.
 //
