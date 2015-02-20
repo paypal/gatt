@@ -14,6 +14,9 @@ import (
 )
 
 func main() {
+
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
 	srv := gatt.NewServer(
 		gatt.Name("gophers"),
 		gatt.Connect(func(c gatt.Conn) { log.Println("Connect: ", c) }),

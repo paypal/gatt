@@ -34,12 +34,12 @@ func (h HCI) Cmd() *cmd.Cmd       { return h.cmd }
 func (h HCI) Event() *event.Event { return h.evt }
 func (h HCI) L2CAP() *l2cap.L2CAP { return h.l2c }
 
-func NewHCI(l *log.Logger, maxConn int) *HCI {
+func NewHCI(l *log.Logger, maxConn int) (*HCI, error) {
 	d, err := device.NewSocket(1)
 	if err != nil {
 		d, err = device.NewSocket(0)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 	}
 	c := cmd.NewCmd(d, l)
@@ -58,7 +58,7 @@ func NewHCI(l *log.Logger, maxConn int) *HCI {
 	e.HandleEvent(event.CommandComplete, event.HandlerFunc(c.HandleComplete))
 	e.HandleEvent(event.CommandStatus, event.HandlerFunc(c.HandleStatus))
 
-	return h
+	return h, nil
 }
 
 func (h HCI) Close() error {
@@ -75,11 +75,9 @@ func (h HCI) mainLoop() {
 	for {
 		n, err := h.dev.Read(b)
 		if err != nil {
-			log.Printf("Failed to Read: %s", err)
 			return
 		}
 		if n == 0 {
-			log.Printf("Dev Read 0 byte. fd had been closed")
 			return
 		}
 		p := make([]byte, n)

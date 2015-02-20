@@ -70,7 +70,12 @@ func (s *Server) setManufacturerData(b []byte) {
 
 func (s *Server) start() error {
 	var logger *log.Logger
-	h := linux.NewHCI(logger, s.maxConnections)
+	h, err := linux.NewHCI(logger, s.maxConnections)
+
+	if err != nil {
+		return err
+	}
+
 	a := linux.NewAdvertiser(h.Cmd())
 	l := h.L2CAP()
 	l.Adv = a

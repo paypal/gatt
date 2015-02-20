@@ -6,6 +6,7 @@
 package socket
 
 import (
+	"errors"
 	"log"
 	"syscall"
 	"time"
@@ -29,6 +30,11 @@ const (
 	HCI_CHANNEL_USER    = 1
 	HCI_CHANNEL_MONITOR = 2
 	HCI_CHANNEL_CONTROL = 3
+)
+
+var (
+	ErrSocketOpenFailed  = errors.New("Unable to open bluetooth socket to device")
+	ErrSocketBindTimeout = errors.New("Timeout occured binding to bluetooth device")
 )
 
 type _Socklen uint32
@@ -72,7 +78,7 @@ func Socket(domain, typ, proto int) (int, error) {
 		}
 		time.Sleep(time.Second)
 	}
-	return 0, syscall.EBUSY
+	return 0, ErrSocketOpenFailed
 }
 
 func Bind(fd int, sa Sockaddr) (err error) {
@@ -89,7 +95,7 @@ func Bind(fd int, sa Sockaddr) (err error) {
 		time.Sleep(time.Second)
 	}
 	log.Println("[BIND] busy")
-	return syscall.EBUSY
+	return ErrSocketBindTimeout
 }
 
 // Socket Level
