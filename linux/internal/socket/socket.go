@@ -6,6 +6,7 @@
 package socket
 
 import (
+	"log"
 	"syscall"
 	"time"
 	"unsafe"
@@ -60,6 +61,7 @@ func (sa *SockaddrHCI) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	sa.raw.Family = AF_BLUETOOTH
 	sa.raw.Dev = uint16(sa.Dev)
 	sa.raw.Channel = sa.Channel
+	log.Println("sa:", sa)
 	return unsafe.Pointer(&sa.raw), _Socklen(sizeofSockaddrHCI), nil
 }
 
@@ -76,14 +78,17 @@ func Socket(domain, typ, proto int) (int, error) {
 func Bind(fd int, sa Sockaddr) (err error) {
 	ptr, n, err := sa.sockaddr()
 	if err != nil {
+		log.Println("[BIND] first error:", err)
 		return err
 	}
 	for i := 0; i < 5; i++ {
 		if err = bind(fd, ptr, n); err == nil || err != syscall.EBUSY {
+			log.Println("[BIND] second error:", err)
 			return err
 		}
 		time.Sleep(time.Second)
 	}
+	log.Println("[BIND] busy")
 	return syscall.EBUSY
 }
 
