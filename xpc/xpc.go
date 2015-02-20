@@ -18,7 +18,7 @@ type XPC struct {
 }
 
 func (x *XPC) Send(msg interface{}, verbose bool) {
-	C.XpcSendMessage(x.conn, goToXpc(msg), true, verbose == true)
+	C.XpcSendMessage(x.conn, goToXpc(msg), true, verbose)
 }
 
 //
@@ -112,7 +112,7 @@ func MakeUUID(s string) UUID {
 }
 
 func (uuid UUID) String() string {
-	return fmt.Sprintf("%x", []byte(uuid[:]))
+	return fmt.Sprintf("%x", []byte(uuid))
 }
 
 func GetUUID(v interface{}) UUID {
