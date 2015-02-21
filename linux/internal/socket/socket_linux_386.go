@@ -3,7 +3,6 @@
 package socket
 
 import (
-	"log"
 	"syscall"
 	"unsafe"
 )
@@ -14,14 +13,10 @@ const (
 )
 
 func bind(s int, addr unsafe.Pointer, addrlen _Socklen) (err error) {
-	log.Println("addr:", addr)
-	log.Println("addrLen:", addrlen)
-	log.Println("s:", s)
 	_, e1 := socketcall(BIND, uintptr(s), uintptr(addr), uintptr(addrlen), 0, 0, 0)
 	if e1 != 0 {
 		err = e1
 	}
-	log.Println("bind error:", err)
 	return
 }
 
