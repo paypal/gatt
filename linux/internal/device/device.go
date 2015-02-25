@@ -6,7 +6,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/acmacalister/gatt/linux/internal/socket"
+	"github.com/paypal/gatt/linux/internal/socket"
 )
 
 type device struct {
