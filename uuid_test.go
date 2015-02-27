@@ -6,7 +6,7 @@ import (
 )
 
 func TestUUID16(t *testing.T) {
-	if want, got := (UUID{[]byte{0x18, 0x00}}), UUID16(0x1800); !uuidEqual(want, got) {
+	if want, got := (UUID{[]byte{0x00, 0x18}}), UUID16(0x1800); !got.Equal(want) {
 		t.Errorf("UUID16: got %x, want %x", got, want)
 	}
 }
@@ -32,7 +32,7 @@ func TestReverse(t *testing.T) {
 		}
 
 		u := UUID{tt.fwd}
-		got = u.reverseBytes()
+		got = reverse(u.b)
 		if !bytes.Equal(got, tt.back) {
 			t.Errorf("UUID.reverse(%x): got %x want %x", tt.fwd, got, tt.back)
 		}
@@ -42,13 +42,13 @@ func TestReverse(t *testing.T) {
 func BenchmarkReverseBytes16(b *testing.B) {
 	u := UUID{make([]byte, 2)}
 	for i := 0; i < b.N; i++ {
-		u.reverseBytes()
+		reverse(u.b)
 	}
 }
 
 func BenchmarkReverseBytes128(b *testing.B) {
 	u := UUID{make([]byte, 16)}
 	for i := 0; i < b.N; i++ {
-		u.reverseBytes()
+		reverse(u.b)
 	}
 }
