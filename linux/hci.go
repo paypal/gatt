@@ -122,7 +122,7 @@ func (h *HCI) SetScanEnable(en bool, dup bool) error {
 	return h.c.SendAndCheckResp(
 		cmd.LESetScanEnable{
 			LEScanEnable:     btoi(en),
-			FilterDuplicates: btoi(dup),
+			FilterDuplicates: btoi(!dup),
 		}, []byte{0x00})
 }
 
