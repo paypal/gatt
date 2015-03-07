@@ -7,17 +7,15 @@
 //
 // This package is a work in progress. The API will change.
 //
-// Support for writing a peripheral is mostly done: You
-// can create services and characteristics, advertise,
-// accept connections, and handle requests.
-// Central support is missing: Scan, connect, discover services
-// and characteristics, make requests.
-//
+// As a peripheral, you can create services, characteristics, and descriptors,
+// advertise, accept connections, and handle requests.
+// As a central, you can scan, connect, discover services, and make requests.
 //
 // SETUP
 //
-// gatt only supports Linux, with BlueZ installed. This may change.
+// gatt supports both Linux and OS X.
 //
+// On Linux:
 // To gain complete and exclusive control of the HCI device, gatt uses
 // HCI_CHANNEL_USER (introduced in Linux v3.14) instead of HCI_CHANNEL_RAW.
 // Those who must use an older kernel may patch in these relevant commits
@@ -45,53 +43,27 @@
 //
 //     sudo <executable>
 //     # OR
-//     sudo setcap 'CAP_NET_ADMIN=+ep' <executable>
+//     sudo setcap 'cap_net_raw,cap_net_admin=eip' <executable>
 //     <executable>
 //
 // USAGE
 //
-// Gatt servers are constructed by creating a new server, adding
-// services and characteristics, and then starting the server.
+//     # Start a simple server.
+//     sudo go run example/server.go
 //
-//     srv := &gatt.Server{Name: "gophergatt"}
-//     svc := srv.AddService(gatt.MustParseUUID("09fc95c0-c111-11e3-9904-0002a5d5c51b"))
+//     # Discover surrounding peripherals.
+//     sudo go run example/discoverer.go
 //
-//     // Add a read characteristic that prints how many times it has been read
-//     n := 0
-//     rchar := svc.AddCharacteristic(gatt.MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51b"))
-//     rchar.HandleRead(
-//     	gatt.ReadHandlerFunc(
-//     		func(resp gatt.ReadResponseWriter, req *gatt.ReadRequest) {
-//     			fmt.Fprintf(resp, "count: %d", n)
-//     			n++
-//     		}),
-//     )
+//     # Connect to and explorer a peripheral device.
+//     sudo go run example/explorer.go <peripheral ID>
 //
-//     // Add a write characteristic that logs when written to
-//     wchar := svc.AddCharacteristic(gatt.MustParseUUID("16fe0d80-c111-11e3-b8c8-0002a5d5c51b"))
-//     wchar.HandleWriteFunc(
-//     	func(r gatt.Request, data []byte) (status byte) {
-//     		log.Println("Wrote:", string(data))
-//     		return gatt.StatusSuccess
-//     	})
+// See the server.go, discoverer.go, and explorer.go in the examples/
+// directory for writing server or client programs that run on Linux
+// and OS X.
 //
-//     // Add a notify characteristic that updates once a second
-//     nchar := svc.AddCharacteristic(gatt.MustParseUUID("1c927b50-c116-11e3-8a33-0800200c9a66"))
-//     nchar.HandleNotifyFunc(
-//     	func(r gatt.Request, n gatt.Notifier) {
-//     		go func() {
-//     			count := 0
-//     			for !n.Done() {
-//     				fmt.Fprintf(n, "Count: %d", count)
-//     				count++
-//     				time.Sleep(time.Second)
-//     			}
-//     		}()
-//     	})
-//
-//     // Start the server
-//     log.Fatal(srv.AdvertiseAndServe())
-//
+// Users, especially on Linux platforms, seeking finer-grained control
+// over the devices can see the examples/server_lnx.go for the usage
+// of Option, which are platform specific.
 //
 // See the rest of the docs for other options and finer-grained control.
 //
