@@ -14,7 +14,7 @@ func onStateChanged(d gatt.Device, s gatt.State) {
 	fmt.Println("State:", s)
 	switch s {
 	case gatt.StatePoweredOn:
-		fmt.Println("scaning...")
+		fmt.Println("scanning...")
 		d.Scan([]gatt.UUID{}, false)
 		return
 	default:
@@ -33,7 +33,7 @@ func onPeriphDiscovered(p gatt.Peripheral, a *gatt.Advertisement, rssi int) {
 func main() {
 	d, err := gatt.NewDevice(option.DefaultClientOptions...)
 	if err != nil {
-		log.Fatalf("Failed to open device, err: %s", err)
+		log.Fatalf("Failed to open device, err: %s\n", err)
 		return
 	}
 
