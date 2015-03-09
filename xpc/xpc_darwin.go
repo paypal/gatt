@@ -1,7 +1,7 @@
 package xpc
 
 /*
-#include "xpc_wrapper.h"
+#include "xpc_wrapper_darwin.h"
 */
 import "C"
 

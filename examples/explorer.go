@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/paypal/gatt"
 	"github.com/paypal/gatt/examples/option"
@@ -19,7 +18,7 @@ func onStateChanged(d gatt.Device, s gatt.State) {
 	fmt.Println("State:", s)
 	switch s {
 	case gatt.StatePoweredOn:
-		fmt.Println("Scaning...")
+		fmt.Println("Scanning...")
 		d.Scan([]gatt.UUID{}, false)
 		return
 	default:
@@ -28,7 +27,7 @@ func onStateChanged(d gatt.Device, s gatt.State) {
 }
 
 func onPeriphDiscovered(p gatt.Peripheral, a *gatt.Advertisement, rssi int) {
-	id := strings.ToUpper(flag.Args()[0])
+	id := flag.Args()[0]
 	if p.ID() != id {
 		return
 	}
@@ -124,12 +123,12 @@ func onPeriphDisconnected(p gatt.Peripheral, err error) {
 func main() {
 	flag.Parse()
 	if len(flag.Args()) != 1 {
-		fmt.Printf("usage: %s [options] peripheral-id", os.Args[0])
+		log.Fatalf("usage: %s [options] peripheral-id\n", os.Args[0])
 	}
 
 	d, err := gatt.NewDevice(option.DefaultClientOptions...)
 	if err != nil {
-		log.Fatalf("Failed to open device, err: %s", err)
+		log.Fatalf("Failed to open device, err: %s\n", err)
 		return
 	}
 
