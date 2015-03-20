@@ -54,7 +54,7 @@ Go is a compiled language, which means to run the examples you need to build the
     # Build the sample server.
     go build examples/server.go
     # Start the sample server.
-    sudo go ./server
+    sudo ./server
 
 Alternatively, you can use "go run" to build and run the examples in a single step:
 
