@@ -10,7 +10,7 @@ type peripheral struct {
 	// NameChanged is called whenever the peripheral GAP Device name has changed.
 	NameChanged func(Peripheral)
 
-	// ServicedModified is called when one or more service of a peripheral have changed.
+	// ServicesModified is called when one or more service of a peripheral have changed.
 	// A list of invalid service is provided in the parameter.
 	ServicesModified func(Peripheral, []*Service)
 
