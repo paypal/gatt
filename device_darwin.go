@@ -308,8 +308,9 @@ func (d *device) respondToRequest(id int, args xpc.Dict) {
 		u := UUID{args.MustGetUUID("kCBMsgArgDeviceUUID")}
 		a := args.MustGetInt("kCBMsgArgAttributeID")
 		attr := d.attrs[a]
-		c := d.subscribers[u.String()]
-		c.stopNotify(attr)
+		if c := d.subscribers[u.String()]; c != nil {
+			c.stopNotify(attr)
+		}
 
 	case 23: // notificationSent
 	}
