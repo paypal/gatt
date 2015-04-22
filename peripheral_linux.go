@@ -260,14 +260,14 @@ func (p *peripheral) WriteDescriptor(d *Descriptor, value []byte) error {
 	return nil
 }
 
-func (p *peripheral) SetNotifyValue(c *Characteristic,
+func (p *peripheral) setNotifyValue(c *Characteristic, flag uint16,
 	f func(*Characteristic, []byte, error)) error {
 	if c.cccd == nil {
 		return errors.New("no cccd") // FIXME
 	}
 	ccc := uint16(0)
 	if f != nil {
-		ccc = gattCCCNotifyFlag
+		ccc = flag
 		p.sub.subscribe(c.vh, func(b []byte, err error) { f(c, b, err) })
 	}
 	b := make([]byte, 5)
@@ -284,6 +284,17 @@ func (p *peripheral) SetNotifyValue(c *Characteristic,
 	}
 	return nil
 }
+
+func (p *peripheral) SetNotifyValue(c *Characteristic,
+	f func(*Characteristic, []byte, error)) error {
+	return p.setNotifyValue(c, gattCCCNotifyFlag, f)
+}
+
+func (p *peripheral) SetIndicateValue(c *Characteristic,
+	f func(*Characteristic, []byte, error)) error {
+	return p.setNotifyValue(c, gattCCCIndicateFlag, f)
+}
+
 
 func (p *peripheral) ReadRSSI() int {
 	// TODO: implement
@@ -348,7 +359,7 @@ func (p *peripheral) loop() {
 	// The default value is 672 bytes
 	buf := make([]byte, 672)
 
-	// Handling response or notification
+	// Handling response or notification/indication
 	for {
 		n, err := p.l2c.Read(buf)
 		if n == 0 || err != nil {
@@ -359,10 +370,11 @@ func (p *peripheral) loop() {
 		b := make([]byte, n)
 		copy(b, buf)
 
-		if b[0] != attOpHandleNotify {
+		if (b[0] != attOpHandleNotify) && (b[0] != attOpHandleInd) {
 			rspc <- b
 			continue
 		}
+
 		h := binary.LittleEndian.Uint16(b[1:3])
 		f := p.sub.fn(h)
 		if f == nil {
@@ -371,5 +383,11 @@ func (p *peripheral) loop() {
 			continue
 		}
 		go f(b[3:], nil)
+
+		if b[0] == attOpHandleInd {
+			// write aknowledgement for indication
+			p.l2c.Write([]byte{attOpHandleCnf})
+		}
+
 	}
 }
