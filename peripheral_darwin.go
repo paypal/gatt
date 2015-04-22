@@ -189,6 +189,12 @@ func (p *peripheral) SetNotifyValue(c *Characteristic, f func(*Characteristic, [
 	return nil
 }
 
+func (p *peripheral) SetIndicateValue(c *Characteristic,
+	f func(*Characteristic, []byte, error)) error {
+	// TODO: Implement set indications logic for darwin (https://github.com/paypal/gatt/issues/32)
+	return nil
+}
+
 func (p *peripheral) ReadRSSI() int {
 	rsp := p.sendReq(43, xpc.Dict{"kCBMsgArgDeviceUUID": p.id})
 	return rsp.MustGetInt("kCBMsgArgData")
