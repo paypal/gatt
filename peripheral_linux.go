@@ -225,7 +225,7 @@ func (p *peripheral) WriteCharacteristic(c *Characteristic, value []byte, noRsp 
 	binary.LittleEndian.PutUint16(b[1:3], c.vh)
 	copy(b[3:], value)
 
-	if !noRsp {
+	if noRsp {
 		p.sendCmd(op, b)
 		return nil
 	}
