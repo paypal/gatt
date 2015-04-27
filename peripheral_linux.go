@@ -380,9 +380,9 @@ func (p *peripheral) loop() {
 		if f == nil {
 			log.Printf("notified by unsubscribed handle")
 			// FIXME: terminate the connection?
-			continue
+		} else {
+			go f(b[3:], nil)
 		}
-		go f(b[3:], nil)
 
 		if b[0] == attOpHandleInd {
 			// write aknowledgement for indication
