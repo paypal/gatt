@@ -1,6 +1,7 @@
 package gatt
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -75,10 +76,24 @@ func (d *device) AdvertiseNameAndServices(name string, ss []UUID) error {
 }
 
 func (d *device) AdvertiseIBeaconData(data []byte) error {
-	rsp := d.sendReq(8, xpc.Dict{"kCBAdvDataAppleBeaconKey": data})
+	var utsname xpc.Utsname
+	xpc.Uname(&utsname)
+
+	var rsp xpc.Dict
+
+	if utsname.Release >= "14." {
+		l := len(data)
+		buf := bytes.NewBuffer([]byte{byte(l + 5), 0xFF, 0x4C, 0x00, 0x02, byte(l)})
+		buf.Write(data)
+		rsp = d.sendReq(8, xpc.Dict{"kCBAdvDataAppleMfgData": buf.Bytes()})
+	} else {
+		rsp = d.sendReq(8, xpc.Dict{"kCBAdvDataAppleBeaconKey": data})
+	}
+
 	if res := rsp.MustGetInt("kCBMsgArgResult"); res != 0 {
 		return errors.New("FIXME: Advertise error")
 	}
+
 	return nil
 }
 
@@ -330,7 +345,7 @@ func (d *device) HandleXpcEvent(event xpc.Dict, err error) {
 
 	id := event.MustGetInt("kCBMsgId")
 	args := event.MustGetDict("kCBMsgArgs")
-	// log.Printf(">> %d, %v", id, args)
+	//log.Printf(">> %d, %v", id, args)
 
 	switch id {
 	case // device event
