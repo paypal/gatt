@@ -387,7 +387,11 @@ func (c *central) handleWrite(reqType byte, b []byte) []byte {
 		} else if d, ok := a.pvt.(*Characteristic); ok {
 			d.whandler.ServeWrite(r, value)
 		}
-		return []byte{attOpWriteRsp}
+		if noRsp {
+			return nil
+		} else {
+			return []byte{attOpWriteRsp}
+		}
 	}
 
 	// CCC/descriptor write
