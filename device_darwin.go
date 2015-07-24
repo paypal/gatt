@@ -63,6 +63,11 @@ func (d *device) Init(f func(Device, State)) error {
 	return nil
 }
 
+func (d *device) Advertise(a *AdvPacket) error {
+	// TODO
+	return notImplemented
+}
+
 func (d *device) AdvertiseNameAndServices(name string, ss []UUID) error {
 	us := uuidSlice(ss)
 	rsp := d.sendReq(8, xpc.Dict{

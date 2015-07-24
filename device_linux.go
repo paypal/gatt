@@ -133,6 +133,19 @@ func (d *device) SetServices(s []*Service) error {
 	return nil
 }
 
+func (d *device) Advertise(a *AdvPacket) error {
+	d.advData = &cmd.LESetAdvertisingData{
+		AdvertisingDataLength: uint8(a.Len()),
+		AdvertisingData:       a.Bytes(),
+	}
+
+	if err := d.update(); err != nil {
+		return err
+	}
+
+	return d.hci.SetAdvertiseEnable(true)
+}
+
 func (d *device) AdvertiseNameAndServices(name string, uu []UUID) error {
 	a := &AdvPacket{}
 	a.AppendFlags(flagGeneralDiscoverable | flagLEOnly)
@@ -155,15 +168,8 @@ func (d *device) AdvertiseNameAndServices(name string, uu []UUID) error {
 			ScanResponseData:       a.Bytes(),
 		}
 	}
-	d.advData = &cmd.LESetAdvertisingData{
-		AdvertisingDataLength: uint8(a.Len()),
-		AdvertisingData:       a.Bytes(),
-	}
 
-	if err := d.update(); err != nil {
-		return err
-	}
-	return d.hci.SetAdvertiseEnable(true)
+	return d.Advertise(a)
 }
 
 func (d *device) AdvertiseIBeaconData(b []byte) error {
@@ -174,10 +180,8 @@ func (d *device) AdvertiseIBeaconData(b []byte) error {
 		AdvertisingDataLength: uint8(a.Len()),
 		AdvertisingData:       a.Bytes(),
 	}
-	if err := d.update(); err != nil {
-		return err
-	}
-	return d.hci.SetAdvertiseEnable(true)
+
+	return d.Advertise(a)
 }
 
 func (d *device) AdvertiseIBeacon(u UUID, major, minor uint16, pwr int8) error {
