@@ -36,6 +36,9 @@ func (s State) String() string {
 type Device interface {
 	Init(stateChanged func(Device, State)) error
 
+	// Advertise advertise AdvPacket
+	Advertise(a *AdvPacket) error
+
 	// AdvertiseNameAndServices advertises device name, and specified service UUIDs.
 	// It tres to fit the UUIDs in the advertising packet as much as possible.
 	// If name doesn't fit in the advertising packet, it will be put in scan response.
