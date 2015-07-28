@@ -170,10 +170,6 @@ func (d *device) AdvertiseIBeaconData(b []byte) error {
 	a := &AdvPacket{}
 	a.AppendFlags(flagGeneralDiscoverable | flagLEOnly)
 	a.AppendManufacturerData(0x004C, b)
-	d.advData = &cmd.LESetAdvertisingData{
-		AdvertisingDataLength: uint8(a.Len()),
-		AdvertisingData:       a.Bytes(),
-	}
 
 	return d.Advertise(a)
 }
