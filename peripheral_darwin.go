@@ -1,6 +1,7 @@
 package gatt
 
 import (
+	"errors"
 	"log"
 
 	"github.com/paypal/gatt/xpc"
@@ -120,6 +121,10 @@ func (p *peripheral) ReadCharacteristic(c *Characteristic) ([]byte, error) {
 	return b, nil
 }
 
+func (p *peripheral) ReadLongCharacteristic(c *Characteristic) ([]byte, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func (p *peripheral) WriteCharacteristic(c *Characteristic, b []byte, noRsp bool) error {
 	args := xpc.Dict{
 		"kCBMsgArgDeviceUUID":                p.id,
@@ -198,6 +203,10 @@ func (p *peripheral) SetIndicateValue(c *Characteristic,
 func (p *peripheral) ReadRSSI() int {
 	rsp := p.sendReq(43, xpc.Dict{"kCBMsgArgDeviceUUID": p.id})
 	return rsp.MustGetInt("kCBMsgArgData")
+}
+
+func (p *peripheral) SetMTU(mtu uint16) error {
+	return errors.New("Not implemented")
 }
 
 func uuidSlice(uu []UUID) [][]byte {

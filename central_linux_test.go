@@ -64,6 +64,23 @@ func TestServing(t *testing.T) {
 			}()
 		})
 
+	longString := "A really long characteristic"
+	svc.AddCharacteristic(MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51c")).HandleReadFunc(
+		func(resp ResponseWriter, req *ReadRequest) {
+			start := req.Offset
+			end := req.Offset + req.Cap
+			if len(longString) < start {
+				start = len(longString)
+			}
+
+			if len(longString) < end {
+				end = len(longString)
+			}
+			io.WriteString(resp, longString[start:end])
+		})
+
+	svc.AddCharacteristic(MustParseUUID("11fac9e0-c111-11e3-9246-0002a5d5c51d")).SetValue([]byte(longString))
+
 	gapSvc := NewService(attrGAPUUID)
 
 	gapSvc.AddCharacteristic(attrDeviceNameUUID).SetValue([]byte("Gopher"))
@@ -87,7 +104,10 @@ func TestServing(t *testing.T) {
 	// 0x000C	0x2803	0x30	0x00	*gatt.Characteristic	[ 30 0D 00 66 9A 0C 20 00 08 33 8A E3 11 16 C1 50 7B 92 1C ]
 	// 0x000D	0x1c927b50c11611e38a330800200c9a66	0x30	0x00	*gatt.Characteristic	[  ]
 	// 0x000E	0x2902	0x0E	0x00	*gatt.Descriptor	[ 00 00 ]
-
+	// 0x000F	0x2803	0x02	0x00	*gatt.Characteristic	[ 02 10 00 1C C5 D5 A5 02 00 46 92 E3 11 11 C1 E0 C9 FA 11 ]
+	// 0x0010	0x11fac9e0c11111e392460002a5d5c51c	0x02	0x00	*gatt.Characteristic	[  ]
+	// 0x0011	0x2803	0x02	0x00	*gatt.Characteristic	[ 02 12 00 1D C5 D5 A5 02 00 46 92 E3 11 11 C1 E0 C9 FA 11 ]
+	// 0x0012	0x11fac9e0c11111e392460002a5d5c51d	0x02	0x00	*gatt.Characteristic	[ 41 20 72 65 61 6C 6C 79 20 6C 6F 6E 67 20 63 68 61 72 61 63 74 65 72 69 73 74 69 63 ]
 	rxtx := []struct {
 		name  string
 		send  string
@@ -159,6 +179,27 @@ func TestServing(t *testing.T) {
 			send: "0a0900",
 			want: "0b636f756e743a2031",
 		},
+		{
+			name: "read long char with handler -- 'A really long characte'",
+			send: "0a1000",
+			want: "0b41207265616c6c79206c6f6e67206368617261637465",
+		},
+		{
+			name: "finish read long char with handler - '6973746963'",
+			send: "0c10001700",
+			want: "0d6973746963",
+		},
+		{
+			name: "read long char with value -- 'A really long characte'",
+			send: "0a1200",
+			want: "0b41207265616c6c79206c6f6e67206368617261637465",
+		},
+		{
+			name: "finish read long char with value - '6973746963'",
+			send: "0c12001700",
+			want: "0d6973746963",
+		},
+
 		{
 			name: "write char 'abcdef' -- ok",
 			send: "120b00616263646566",
