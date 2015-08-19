@@ -1,6 +1,7 @@
 package gatt
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -215,6 +216,43 @@ func (p *peripheral) ReadCharacteristic(c *Characteristic) ([]byte, error) {
 	return b, nil
 }
 
+func (p *peripheral) ReadLongCharacteristic(c *Characteristic) ([]byte, error) {
+	// The spec says that a read blob request should fail if the characteristic
+	// is smaller than mtu - 1.  To simplify the API, the first read is done
+	// with a regular read request.  If the buffer received is equal to mtu -1,
+	// then we read the rest of the data using read blob.
+	firstRead, err := p.ReadCharacteristic(c)
+	if err != nil {
+		return nil, err
+	}
+	if len(firstRead) < int(p.mtu)-1 {
+		return firstRead, nil
+	}
+
+	var buf bytes.Buffer
+	buf.Write(firstRead)
+	off := uint16(len(firstRead))
+	for {
+		b := make([]byte, 5)
+		op := byte(attOpReadBlobReq)
+		b[0] = op
+		binary.LittleEndian.PutUint16(b[1:3], c.vh)
+		binary.LittleEndian.PutUint16(b[3:5], off)
+
+		b = p.sendReq(op, b)
+		b = b[1:]
+		if len(b) == 0 {
+			break
+		}
+		buf.Write(b)
+		off += uint16(len(b))
+		if len(b) < int(p.mtu)-1 {
+			break
+		}
+	}
+	return buf.Bytes(), nil
+}
+
 func (p *peripheral) WriteCharacteristic(c *Characteristic, value []byte, noRsp bool) error {
 	b := make([]byte, 3+len(value))
 	op := byte(attOpWriteReq)
@@ -294,7 +332,6 @@ func (p *peripheral) SetIndicateValue(c *Characteristic,
 	f func(*Characteristic, []byte, error)) error {
 	return p.setNotifyValue(c, gattCCCIndicateFlag, f)
 }
-
 
 func (p *peripheral) ReadRSSI() int {
 	// TODO: implement
@@ -390,4 +427,19 @@ func (p *peripheral) loop() {
 		}
 
 	}
+}
+
+func (p *peripheral) SetMTU(mtu uint16) error {
+	b := make([]byte, 3)
+	op := byte(attOpMtuReq)
+	b[0] = op
+	binary.LittleEndian.PutUint16(b[1:3], uint16(mtu))
+
+	b = p.sendReq(op, b)
+	serverMTU := binary.LittleEndian.Uint16(b[1:3])
+	if serverMTU < mtu {
+		mtu = serverMTU
+	}
+	p.mtu = mtu
+	return nil
 }

@@ -50,6 +50,11 @@ func onPeriphConnected(p gatt.Peripheral, err error) {
 	fmt.Println("Connected")
 	defer p.Device().CancelConnection(p)
 
+	if err := p.SetMTU(500); err != nil {
+		fmt.Printf("Failed to set MTU, err: %s\n", err)
+		return
+	}
+
 	// Discovery services
 	ss, err := p.DiscoverServices(nil)
 	if err != nil {
@@ -81,7 +86,7 @@ func onPeriphConnected(p gatt.Peripheral, err error) {
 
 			// Read the characteristic, if possible.
 			if (c.Properties() & gatt.CharRead) != 0 {
-				b, err := p.ReadCharacteristic(c)
+				b, err := p.ReadLongCharacteristic(c)
 				if err != nil {
 					fmt.Printf("Failed to read characteristic, err: %s\n", err)
 					continue
