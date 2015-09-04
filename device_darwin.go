@@ -64,8 +64,14 @@ func (d *device) Init(f func(Device, State)) error {
 }
 
 func (d *device) Advertise(a *AdvPacket) error {
-	// TODO
-	return notImplemented
+	rsp := d.sendReq(8, xpc.Dict{
+		"kCBAdvDataAppleMfgData": a.b, // not a.Bytes(). should be slice
+	})
+
+	if res := rsp.MustGetInt("kCBMsgArgResult"); res != 0 {
+		return errors.New("FIXME: Advertise error")
+	}
+	return nil
 }
 
 func (d *device) AdvertiseNameAndServices(name string, ss []UUID) error {
