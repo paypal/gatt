@@ -172,7 +172,7 @@ func (h *HCI) mainLoop() {
 		}
 		p := make([]byte, n)
 		copy(p, b)
-		go h.handlePacket(p)
+		h.handlePacket(p)
 	}
 }
 
