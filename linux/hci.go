@@ -188,7 +188,12 @@ func (h *HCI) handlePacket(b []byte) {
 	case typSCODataPkt:
 		err = fmt.Errorf("SCO packet not supported")
 	case typEventPkt:
-		err = h.e.Dispatch(b)
+		go func() {
+			err := h.e.Dispatch(b)
+			if err != nil {
+				log.Printf("hci: %s, [ % X]", err, b)
+			}
+		}()
 	case typVendorPkt:
 		err = fmt.Errorf("Vendor packet not supported")
 	default:
