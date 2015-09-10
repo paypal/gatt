@@ -17,7 +17,7 @@ type central struct {
 func newCentral(d *device, u UUID) *central {
 	return &central{
 		dev:         d,
-		mtu:         20, // TODO: can we query the real number?
+		mtu:         23,
 		uuid:        u,
 		notifiers:   make(map[uint16]*notifier),
 		notifiersmu: &sync.Mutex{},
