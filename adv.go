@@ -195,20 +195,38 @@ func (a *AdvPacket) AppendManufacturerData(id uint16, b []byte) *AdvPacket {
 
 // AppendUUIDFit appends a BLE advertised service UUID
 // packet field if it fits in the packet, and reports whether the UUID fit.
-func (a *AdvPacket) AppendUUIDFit(u UUID) bool {
-	if len(a.b)+2+u.Len() > MaxEIRPacketLength {
-		return false
+func (a *AdvPacket) AppendUUIDFit(uu []UUID) bool {
+	// Iterate all UUIDs to see if they fit in the packet or not.
+	fit, l := true, len(a.b)
+	for _, u := range uu {
+		if u.Equal(attrGAPUUID) || u.Equal(attrGATTUUID) {
+			continue
+		}
+		l += 2 + u.Len()
+		if l > MaxEIRPacketLength {
+			fit = false
+			break
+		}
 	}
-	// Err on the side of safety and assume that there might be
-	// other services available: Use typeSomeUUID instead
-	// of typeAllUUID.
-	// TODO: When we know the full set of services,
-	// calculate this exactly, instead of hedging.
-	switch u.Len() {
-	case 2:
-		a.AppendField(typeSomeUUID16, u.b)
-	case 16:
-		a.AppendField(typeSomeUUID128, u.b)
+
+	// Append the UUIDs until they no longer fit.
+	for _, u := range uu {
+		if u.Equal(attrGAPUUID) || u.Equal(attrGATTUUID) {
+			continue
+		}
+		if len(a.b)+2+u.Len() > MaxEIRPacketLength {
+			break
+		}
+		switch l = u.Len(); {
+		case l == 2 && fit:
+			a.AppendField(typeAllUUID16, u.b)
+		case l == 16 && fit:
+			a.AppendField(typeAllUUID128, u.b)
+		case l == 2 && !fit:
+			a.AppendField(typeSomeUUID16, u.b)
+		case l == 16 && !fit:
+			a.AppendField(typeSomeUUID128, u.b)
+		}
 	}
-	return true
+	return fit
 }

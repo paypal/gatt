@@ -149,14 +149,8 @@ func (d *device) Advertise(a *AdvPacket) error {
 func (d *device) AdvertiseNameAndServices(name string, uu []UUID) error {
 	a := &AdvPacket{}
 	a.AppendFlags(flagGeneralDiscoverable | flagLEOnly)
-	for _, u := range uu {
-		if u.Equal(attrGAPUUID) || u.Equal(attrGATTUUID) {
-			continue
-		}
-		if ok := a.AppendUUIDFit(u); !ok {
-			break
-		}
-	}
+	a.AppendUUIDFit(uu)
+
 	if len(a.b)+len(name)+2 < MaxEIRPacketLength {
 		a.AppendName(name)
 		d.scanResp = nil
