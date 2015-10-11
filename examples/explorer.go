@@ -86,7 +86,7 @@ func onPeriphConnected(p gatt.Peripheral, err error) {
 
 			// Read the characteristic, if possible.
 			if (c.Properties() & gatt.CharRead) != 0 {
-				b, err := p.ReadLongCharacteristic(c)
+				b, err := p.ReadCharacteristic(c)
 				if err != nil {
 					fmt.Printf("Failed to read characteristic, err: %s\n", err)
 					continue
