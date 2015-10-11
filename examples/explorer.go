@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/paypal/gatt"
 	"github.com/paypal/gatt/examples/option"
@@ -115,9 +116,24 @@ func onPeriphConnected(p gatt.Peripheral, err error) {
 				}
 				fmt.Printf("    value         %x | %q\n", b, b)
 			}
+
+			// Subscribe the characteristic, if possible.
+			if (c.Properties() & (gatt.CharNotify | gatt.CharIndicate)) != 0 {
+				f := func(c *gatt.Characteristic, b []byte, err error) {
+					fmt.Printf("notified: % X | %q\n", b, b)
+				}
+				if err := p.SetNotifyValue(c, f); err != nil {
+					fmt.Printf("Failed to subscribe characteristic, err: %s\n", err)
+					continue
+				}
+			}
+
 		}
 		fmt.Println()
 	}
+
+	fmt.Printf("Waiting for 5 seconds to get some notifiations, if any.\n")
+	time.Sleep(5 * time.Second)
 }
 
 func onPeriphDisconnected(p gatt.Peripheral, err error) {
