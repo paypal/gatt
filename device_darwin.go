@@ -56,7 +56,7 @@ func (d *device) Init(f func(Device, State)) error {
 	rsp := d.sendReq(1, xpc.Dict{
 		"kCBMsgArgName":    fmt.Sprintf("gopher-%v", time.Now().Unix()),
 		"kCBMsgArgOptions": xpc.Dict{"kCBInitOptionShowPowerAlert": 1},
-		"kCBMsgArgType":    1,
+		"kCBMsgArgType":    d.role,
 	})
 	d.stateChanged = f
 	go d.stateChanged(d, State(rsp.MustGetInt("kCBMsgArgState")))
