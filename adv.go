@@ -88,6 +88,12 @@ func (a *Advertisement) unmarshall(b []byte) error {
 		return u
 	}
 
+	serviceDataList := func(sd []ServiceData, d []byte, w int) []ServiceData {
+		serviceData := ServiceData {UUID{d[:w]}, make([]byte, len(d) - w)}
+                copy(serviceData.Data, d[2:])
+                return append(sd, serviceData)
+	}
+
 	for len(b) > 0 {
 		if len(b) < 2 {
 			return errors.New("invalid advertise data")
@@ -127,9 +133,12 @@ func (a *Advertisement) unmarshall(b []byte) error {
 		case typeManufacturerData:
 			a.ManufacturerData = make([]byte, len(d))
 			copy(a.ManufacturerData, d)
-		// case typeServiceData16,
-		// case typeServiceData32,
-		// case typeServiceData128:
+		case typeServiceData16:
+			a.ServiceData = serviceDataList(a.ServiceData, d, 2)
+		case typeServiceData32,
+			a.ServiceData = serviceDataList(a.ServiceData, d, 4)
+		case typeServiceData128:
+			a.ServiceData = serviceDataList(a.ServiceData, d, 16)
 		default:
 			log.Printf("DATA: [ % X ]", d)
 		}
