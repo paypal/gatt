@@ -135,7 +135,7 @@ func (a *Advertisement) unmarshall(b []byte) error {
 			copy(a.ManufacturerData, d)
 		case typeServiceData16:
 			a.ServiceData = serviceDataList(a.ServiceData, d, 2)
-		case typeServiceData32,
+		case typeServiceData32:
 			a.ServiceData = serviceDataList(a.ServiceData, d, 4)
 		case typeServiceData128:
 			a.ServiceData = serviceDataList(a.ServiceData, d, 16)
