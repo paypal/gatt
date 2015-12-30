@@ -50,8 +50,7 @@ func finish(op byte, h uint16, b []byte) bool {
 	return done
 }
 
-func (p *peripheral) DiscoverServices(s []UUID) ([]*Service, error) {
-	// TODO: implement the UUID filters
+func (p *peripheral) DiscoverServices(ds []UUID) ([]*Service, error) {
 	// p.pd.Conn.Write([]byte{0x02, 0x87, 0x00}) // MTU
 	done := false
 	start := uint16(0x0001)
@@ -77,14 +76,18 @@ func (p *peripheral) DiscoverServices(s []UUID) ([]*Service, error) {
 		}
 
 		for len(b) != 0 {
-			h := binary.LittleEndian.Uint16(b[:2])
 			endh := binary.LittleEndian.Uint16(b[2:4])
-			s := &Service{
-				uuid: UUID{b[4:l]},
-				h:    h,
-				endh: endh,
+			u := UUID{b[4:l]}
+
+			if UUIDContains(ds, u) {
+				s := &Service{
+					uuid: u,
+					h:    binary.LittleEndian.Uint16(b[:2]),
+					endh: endh,
+				}
+				p.svcs = append(p.svcs, s)
 			}
-			p.svcs = append(p.svcs, s)
+
 			b = b[l:]
 			done = endh == 0xFFFF
 			start = endh + 1
@@ -99,7 +102,6 @@ func (p *peripheral) DiscoverIncludedServices(ss []UUID, s *Service) ([]*Service
 }
 
 func (p *peripheral) DiscoverCharacteristics(cs []UUID, s *Service) ([]*Characteristic, error) {
-	// TODO: implement the UUID filters
 	done := false
 	start := s.h
 	var prev *Characteristic
@@ -142,7 +144,9 @@ func (p *peripheral) DiscoverCharacteristics(cs []UUID, s *Service) ([]*Characte
 				h:     h,
 				vh:    vh,
 			}
-			s.chars = append(s.chars, c)
+			if UUIDContains(cs, u) {
+				s.chars = append(s.chars, c)
+			}
 			b = b[l:]
 			done = vh == s.endh
 			start = vh + 1
@@ -159,7 +163,6 @@ func (p *peripheral) DiscoverCharacteristics(cs []UUID, s *Service) ([]*Characte
 }
 
 func (p *peripheral) DiscoverDescriptors(ds []UUID, c *Characteristic) ([]*Descriptor, error) {
-	// TODO: implement the UUID filters
 	done := false
 	start := c.vh + 1
 	for !done {
@@ -193,7 +196,9 @@ func (p *peripheral) DiscoverDescriptors(ds []UUID, c *Characteristic) ([]*Descr
 			h := binary.LittleEndian.Uint16(b[:2])
 			u := UUID{b[2:l]}
 			d := &Descriptor{uuid: u, h: h, char: c}
-			c.descs = append(c.descs, d)
+			if UUIDContains(ds, u) {
+				c.descs = append(c.descs, d)
+			}
 			if u.Equal(attrClientCharacteristicConfigUUID) {
 				c.cccd = d
 			}

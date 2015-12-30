@@ -71,6 +71,21 @@ func (u UUID) Equal(v UUID) bool {
 	return bytes.Equal(u.b, v.b)
 }
 
+// UUIDContains returns a boolean reporting whether u is in the slice s.
+func UUIDContains(s []UUID, u UUID) bool {
+	if s == nil {
+		return true
+	}
+
+	for _, a := range s {
+		if a.Equal(u) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // reverse returns a reversed copy of u.
 func reverse(u []byte) []byte {
 	// Special-case 16 bit UUIDS for speed.
