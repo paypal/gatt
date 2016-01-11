@@ -142,6 +142,11 @@ func (d *device) StopAdvertising() error {
 	return nil
 }
 
+func (d *device) Stop() error {
+	// No Implementation
+
+}
+
 func (d *device) RemoveAllServices() error {
 	d.sendCmd(12, nil)
 	return nil
