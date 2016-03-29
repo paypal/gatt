@@ -413,10 +413,19 @@ func (c *central) handleWrite(reqType byte, b []byte) []byte {
 
 func (c *central) sendNotification(a *attr, data []byte) (int, error) {
 	w := newL2capWriter(c.mtu)
-	w.WriteByteFit(attOpHandleNotify)
-	w.WriteUint16Fit(a.pvt.(*Descriptor).char.vh)
+	added := 0
+	if w.WriteByteFit(attOpHandleNotify) {
+		added += 1
+	}
+	if w.WriteUint16Fit(a.pvt.(*Descriptor).char.vh) {
+		added += 2
+	}
 	w.WriteFit(data)
-	return c.l2conn.Write(w.Bytes())
+	n, err := c.l2conn.Write(w.Bytes())
+	if err != nil {
+		return n, err
+	}
+	return n - added, err
 }
 
 func readHandleRange(b []byte) (start, end uint16) {
