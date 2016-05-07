@@ -289,7 +289,7 @@ func xpcToGo(v C.xpc_object_t) interface{} {
 	switch t {
 	case C.TYPE_ARRAY:
 		a := make(Array, C.int(C.xpc_array_get_count(v)))
-		C.XpcArrayApply(unsafe.Pointer(&a), v)
+		C.XpcArrayApply(C.uintptr_t(uintptr(unsafe.Pointer(&a))), v)
 		return a
 
 	case C.TYPE_DATA:
@@ -297,7 +297,7 @@ func xpcToGo(v C.xpc_object_t) interface{} {
 
 	case C.TYPE_DICT:
 		d := make(Dict)
-		C.XpcDictApply(unsafe.Pointer(&d), v)
+		C.XpcDictApply(C.uintptr_t(uintptr(unsafe.Pointer(&d))), v)
 		return d
 
 	case C.TYPE_INT64:
