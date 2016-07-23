@@ -22,6 +22,7 @@ var knownServices = map[string]struct{ Name, Type string }{
 	"1813": {Name: "Scan Parameters", Type: "org.bluetooth.service.scan_parameters"},
 	"1814": {Name: "Running Speed and Cadence", Type: "org.bluetooth.service.running_speed_and_cadence"},
 	"1815": {Name: "Cycling Speed and Cadence", Type: "org.bluetooth.service.cycling_speed_and_cadence"},
+	"1822": {Name: "Pulse Oximeter", Type: "org.bluetooth.service.pulse_oximeter"},
 }
 
 // A dictionary of known descriptor names and type (keyed by attribute uuid)
@@ -119,4 +120,7 @@ var knownCharacteristics = map[string]struct{ Name, Type string }{
 	"2a5b": {Name: "CSC Measurement", Type: "org.bluetooth.characteristic.csc_measurement"},
 	"2a5c": {Name: "CSC Feature", Type: "org.bluetooth.characteristic.csc_feature"},
 	"2a5d": {Name: "Sensor Location", Type: "org.bluetooth.characteristic.sensor_location"},
+	"2a5e": {Name: "PLX Spot-Check Measurement", Type: "org.bluetooth.characteristic.plx_spot_check_measurement"},
+	"2a5f": {Name: "PLX Continuous Measurement Characteristic", Type: "org.bluetooth.characteristic.plx_continuous_measurement"},
+	"2a60": {Name: "PLX Features", Type: "org.bluetooth.characteristic.plx_features"},
 }
