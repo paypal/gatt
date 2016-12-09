@@ -366,7 +366,7 @@ func (p *peripheral) sendReq(op byte, b []byte) []byte {
 
 func (p *peripheral) loop() {
 	// Serialize the request.
-	rspc := make(chan []byte)
+	rspc := make(chan []byte, 2)
 
 	// Dequeue request loop
 	go func() {
