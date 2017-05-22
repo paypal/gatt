@@ -96,7 +96,7 @@ OS X central, see http://stackoverflow.com/questions/20553957.
 
 ## Known Issues
 
-Currently OS X vesion  does not support subscribing to indications. 
+Currently OS X vesion  does not support subscribing to indications.
 Please check [#32](https://github.com/paypal/gatt/issues/32) for the status of this issue.
 
 ## REFERENCES
