@@ -1,6 +1,6 @@
 package service
 
-import "github.com/paypal/gatt"
+import "github.com/cfreeman/gatt"
 
 var (
 	attrGAPUUID = gatt.UUID16(0x1800)
