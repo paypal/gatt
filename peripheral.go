@@ -99,4 +99,5 @@ func (s *subscriber) fn(h uint16) subscribefn {
 
 var (
 	ErrInvalidLength = errors.New("invalid length")
+	ErrDisconnected = errors.New("disconnected mid request")
 )
