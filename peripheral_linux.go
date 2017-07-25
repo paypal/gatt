@@ -64,6 +64,9 @@ func (p *peripheral) DiscoverServices(s []UUID) ([]*Service, error) {
 		binary.LittleEndian.PutUint16(b[5:7], 0x2800)
 
 		b = p.sendReq(op, b)
+		if b == nil {
+			return nil, ErrDisconnected
+		}
 		if finish(op, start, b) {
 			break
 		}
@@ -112,6 +115,9 @@ func (p *peripheral) DiscoverCharacteristics(cs []UUID, s *Service) ([]*Characte
 		binary.LittleEndian.PutUint16(b[5:7], 0x2803)
 
 		b = p.sendReq(op, b)
+		if b == nil {
+			return nil, ErrDisconnected
+		}
 		if finish(op, start, b) {
 			break
 		}
@@ -173,6 +179,9 @@ func (p *peripheral) DiscoverDescriptors(ds []UUID, c *Characteristic) ([]*Descr
 		binary.LittleEndian.PutUint16(b[3:5], c.endh)
 
 		b = p.sendReq(op, b)
+		if b == nil {
+			return nil, ErrDisconnected
+		}
 		if finish(attOpFindInfoReq, start, b) {
 			break
 		}
@@ -212,6 +221,9 @@ func (p *peripheral) ReadCharacteristic(c *Characteristic) ([]byte, error) {
 	binary.LittleEndian.PutUint16(b[1:3], c.vh)
 
 	b = p.sendReq(op, b)
+	if b == nil {
+		return nil, ErrDisconnected
+	}
 	b = b[1:]
 	return b, nil
 }
@@ -240,6 +252,9 @@ func (p *peripheral) ReadLongCharacteristic(c *Characteristic) ([]byte, error) {
 		binary.LittleEndian.PutUint16(b[3:5], off)
 
 		b = p.sendReq(op, b)
+		if b == nil {
+			return nil, ErrDisconnected
+		}
 		b = b[1:]
 		if len(b) == 0 {
 			break
@@ -268,8 +283,11 @@ func (p *peripheral) WriteCharacteristic(c *Characteristic, value []byte, noRsp 
 		return nil
 	}
 	b = p.sendReq(op, b)
-	// TODO: error handling
+	if b == nil {
+		return ErrDisconnected
+	}
 	b = b[1:]
+	// TODO: error handling
 	return nil
 }
 
@@ -280,6 +298,9 @@ func (p *peripheral) ReadDescriptor(d *Descriptor) ([]byte, error) {
 	binary.LittleEndian.PutUint16(b[1:3], d.h)
 
 	b = p.sendReq(op, b)
+	if b == nil {
+		return nil, ErrDisconnected
+	}
 	b = b[1:]
 	// TODO: error handling
 	return b, nil
@@ -293,6 +314,9 @@ func (p *peripheral) WriteDescriptor(d *Descriptor, value []byte) error {
 	copy(b[3:], value)
 
 	b = p.sendReq(op, b)
+	if b == nil {
+		return ErrDisconnected
+	}
 	b = b[1:]
 	// TODO: error handling
 	return nil
@@ -315,6 +339,9 @@ func (p *peripheral) setNotifyValue(c *Characteristic, flag uint16,
 	binary.LittleEndian.PutUint16(b[3:5], ccc)
 
 	b = p.sendReq(op, b)
+	if b == nil {
+		return ErrDisconnected
+	}
 	b = b[1:]
 	// TODO: error handling
 	if f == nil {
@@ -377,7 +404,12 @@ func (p *peripheral) loop() {
 				if req.rspc == nil {
 					break
 				}
-				r := <-rspc
+				r, ok := <-rspc
+				if !ok {
+					close(req.rspc)
+					break
+				}
+
 				switch reqOp, rspOp := req.b[0], r[0]; {
 				case rspOp == attRspFor[reqOp]:
 				case rspOp == attOpError && r[1] == reqOp:
@@ -401,6 +433,7 @@ func (p *peripheral) loop() {
 		n, err := p.l2c.Read(buf)
 		if n == 0 || err != nil {
 			close(p.quitc)
+			close(rspc)
 			return
 		}
 
@@ -436,6 +469,9 @@ func (p *peripheral) SetMTU(mtu uint16) error {
 	binary.LittleEndian.PutUint16(b[1:3], uint16(mtu))
 
 	b = p.sendReq(op, b)
+	if b == nil {
+		return ErrDisconnected
+	}
 	serverMTU := binary.LittleEndian.Uint16(b[1:3])
 	if serverMTU < mtu {
 		mtu = serverMTU
