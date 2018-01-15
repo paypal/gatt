@@ -257,6 +257,10 @@ func (d *device) Scan(ss []UUID, dup bool) {
 	d.sendCmd(29, args)
 }
 
+func (d *device) Stop() error {
+	return errors.New("FIXME: Not implemented Stop on darwin")
+}
+
 func (d *device) StopScanning() {
 	d.sendCmd(30, nil)
 }
