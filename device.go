@@ -72,6 +72,9 @@ type Device interface {
 	// StopScanning stops scanning.
 	StopScanning()
 
+	// Stop change state poweredOff and close device (Only linux)
+	Stop() error
+
 	// Connect connects to a remote peripheral.
 	Connect(p Peripheral)
 
