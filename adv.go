@@ -77,8 +77,13 @@ type Advertisement struct {
 }
 
 // This is only used in Linux port.
-func (a *Advertisement) unmarshall(b []byte) error {
-
+func (a *Advertisement) unmarshall(b []byte) (outErr error) {
+	var err error
+	defer func() {
+		if err := recover(); err != nil {
+			outErr = err.(error)
+		}
+	}()
 	// Utility function for creating a list of uuids.
 	uuidList := func(u []UUID, d []byte, w int) []UUID {
 		for len(d) > 0 {
@@ -135,7 +140,7 @@ func (a *Advertisement) unmarshall(b []byte) error {
 		}
 		b = b[1+l:]
 	}
-	return nil
+	return err
 }
 
 // AdvPacket is an utility to help crafting advertisment or scan response data.
