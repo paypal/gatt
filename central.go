@@ -3,7 +3,6 @@ package gatt
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"sync"
 )
 
@@ -38,9 +37,6 @@ func newResponseWriter(c int) *responseWriter {
 }
 
 func (w *responseWriter) Write(b []byte) (int, error) {
-	if avail := w.capacity - w.buf.Len(); avail < len(b) {
-		return 0, fmt.Errorf("requested write %d bytes, %d available", len(b), avail)
-	}
 	return w.buf.Write(b)
 }
 
