@@ -303,6 +303,7 @@ func (c *central) handleReadBlob(b []byte) []byte {
 			d.rhandler.ServeRead(rsp, req)
 		}
 		v = rsp.bytes()
+		v = v[:offset]
 		offset = 0 // the server has already adjusted for the offset
 	}
 	w := newL2capWriter(c.mtu)
