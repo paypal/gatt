@@ -275,7 +275,6 @@ func (c *central) handleRead(b []byte) []byte {
 	return w.Bytes()
 }
 
-// FIXME: check this, untested, might be broken
 func (c *central) handleReadBlob(b []byte) []byte {
 	h := binary.LittleEndian.Uint16(b)
 	offset := binary.LittleEndian.Uint16(b[2:])
@@ -303,6 +302,7 @@ func (c *central) handleReadBlob(b []byte) []byte {
 			d.rhandler.ServeRead(rsp, req)
 		}
 		v = rsp.bytes()
+		v = v[offset:]
 		offset = 0 // the server has already adjusted for the offset
 	}
 	w := newL2capWriter(c.mtu)
