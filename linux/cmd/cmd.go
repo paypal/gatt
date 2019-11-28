@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/paypal/gatt/linux/evt"
-	"github.com/paypal/gatt/linux/util"
+	"gatt/linux/evt"
+	"gatt/linux/util"
 )
 
 type CmdParam interface {
@@ -140,9 +140,9 @@ const (
 	hostCtl     = 0x03
 	infoParam   = 0x04
 	statusParam = 0x05
-	testingCmd  = 0X3E
+	testingCmd  = 0x3E
 	leCtl       = 0x08
-	vendorCmd   = 0X3F
+	vendorCmd   = 0x3F
 )
 
 const (

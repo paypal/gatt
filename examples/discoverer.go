@@ -4,10 +4,10 @@ package main
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/paypal/gatt"
-	"github.com/paypal/gatt/examples/option"
+	"gatt"
+	"gatt/examples/option"
 )
 
 func onStateChanged(d gatt.Device, s gatt.State) {

@@ -5,13 +5,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/paypal/gatt"
-	"github.com/paypal/gatt/examples/option"
+	"gatt"
+	"gatt/examples/option"
 )
 
 var done = make(chan struct{})

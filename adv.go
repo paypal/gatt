@@ -2,7 +2,7 @@ package gatt
 
 import (
 	"errors"
-	"log"
+	log "github.com/sirupsen/logrus"
 )
 
 // MaxEIRPacketLength is the maximum allowed AdvertisingPacket

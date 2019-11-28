@@ -4,11 +4,11 @@ package main
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/paypal/gatt"
-	"github.com/paypal/gatt/examples/option"
-	"github.com/paypal/gatt/examples/service"
+	"gatt"
+	"gatt/examples/option"
+	"gatt/examples/service"
 )
 
 func main() {

@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 
-	"github.com/paypal/gatt/xpc"
+	"gatt/xpc"
 )
 
 const (
