@@ -5,7 +5,7 @@ import (
 	"io"
 	log "github.com/sirupsen/logrus"
 
-	"gatt/linux/cmd"
+	"github.com/XC-/gatt/linux/cmd"
 )
 
 type aclData struct {

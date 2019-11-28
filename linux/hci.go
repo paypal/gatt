@@ -6,8 +6,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"sync"
 
-	"gatt/linux/cmd"
-	"gatt/linux/evt"
+	"github.com/XC-/gatt/linux/cmd"
+	"github.com/XC-/gatt/linux/evt"
 )
 
 type HCI struct {

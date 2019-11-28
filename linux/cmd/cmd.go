@@ -7,8 +7,8 @@ import (
 	"io"
 	log "github.com/sirupsen/logrus"
 
-	"gatt/linux/evt"
-	"gatt/linux/util"
+	"github.com/XC-/gatt/linux/evt"
+	"github.com/XC-/gatt/linux/util"
 )
 
 type CmdParam interface {

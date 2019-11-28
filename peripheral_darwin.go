@@ -4,7 +4,7 @@ import (
 	"errors"
 	log "github.com/sirupsen/logrus"
 
-	"gatt/xpc"
+	"github.com/XC-/gatt/xpc"
 )
 
 type peripheral struct {

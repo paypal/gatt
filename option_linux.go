@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"gatt/linux/cmd"
+	"github.com/XC-/gatt/linux/cmd"
 )
 
 // LnxDeviceID specifies which HCI device to use.
