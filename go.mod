@@ -1,4 +1,4 @@
-module gatt
+module github.com/XC-/gatt
 
 go 1.13
 
