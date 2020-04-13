@@ -2,6 +2,7 @@ package gatt
 
 import (
 	"errors"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -93,9 +94,16 @@ func (a *Advertisement) unmarshall(b []byte) error {
 			return errors.New("invalid advertise data")
 		}
 		l, t := b[0], b[1]
+		fmt.Println(len(b), b)
 		if len(b) < int(1+l) {
-			return errors.New("invalid advertise data")
+			return errors.New("invalid advertise data, not enough data")
 		}
+		if l == 0 {
+			fmt.Println("Detected zero length data")
+		}
+		//else if l == 0 {
+		//	return errors.New(fmt.Sprintf("invalid advertise data: %d", l))
+		//}
 		d := b[2 : 1+l]
 		switch t {
 		case typeFlags:
@@ -131,7 +139,7 @@ func (a *Advertisement) unmarshall(b []byte) error {
 		// case typeServiceData32,
 		// case typeServiceData128:
 		default:
-			log.Printf("DATA: [ % X ]", d)
+			log.Info("DATA: [ % X ]", d)
 		}
 		b = b[1+l:]
 	}
