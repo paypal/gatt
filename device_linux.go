@@ -2,10 +2,12 @@ package gatt
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"net"
 
-	"github.com/paypal/gatt/linux"
-	"github.com/paypal/gatt/linux/cmd"
+	"github.com/XC-/gatt/linux"
+	"github.com/XC-/gatt/linux/cmd"
 )
 
 type device struct {
@@ -94,6 +96,10 @@ func (d *device) Init(f func(Device, State)) error {
 	}
 	d.hci.AdvertisementHandler = func(pd *linux.PlatData) {
 		a := &Advertisement{}
+		if hex.EncodeToString(pd.Address[:]) != "d8c672d8cf87" {
+			return
+		}
+		fmt.Println(pd.Name+": "+string(pd.AddressType)+" "+hex.EncodeToString(pd.Address[:]))
 		a.unmarshall(pd.Data)
 		a.Connectable = pd.Connectable
 		p := &peripheral{pd: pd, d: d}

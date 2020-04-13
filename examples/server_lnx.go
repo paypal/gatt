@@ -6,12 +6,12 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 
-	"github.com/paypal/gatt"
-	"github.com/paypal/gatt/examples/service"
-	"github.com/paypal/gatt/linux/cmd"
+	"github.com/XC-/gatt"
+	"github.com/XC-/gatt/examples/service"
+	"github.com/XC-/gatt/linux/cmd"
 )
 
 // server_lnx implements a GATT server.

@@ -3,9 +3,9 @@ package linux
 import (
 	"fmt"
 	"io"
-	"log"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/paypal/gatt/linux/cmd"
+	"github.com/XC-/gatt/linux/cmd"
 )
 
 type aclData struct {

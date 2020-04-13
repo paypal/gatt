@@ -1,6 +1,6 @@
 package gatt
 
-import "log"
+import log "github.com/sirupsen/logrus"
 
 // attr is a BLE attribute. It is not exported;
 // managing attributes is an implementation detail.
