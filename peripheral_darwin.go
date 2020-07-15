@@ -121,6 +121,10 @@ func (p *peripheral) ReadCharacteristic(c *Characteristic) ([]byte, error) {
 	return b, nil
 }
 
+func (p *peripheral) ReadCharacteristicByHandle(vh uint16) ([]byte, error) {
+	return nil, errors.New("Not implemented")
+}
+
 func (p *peripheral) ReadLongCharacteristic(c *Characteristic) ([]byte, error) {
 	return nil, errors.New("Not implemented")
 }

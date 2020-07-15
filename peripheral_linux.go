@@ -216,6 +216,17 @@ func (p *peripheral) ReadCharacteristic(c *Characteristic) ([]byte, error) {
 	return b, nil
 }
 
+func (p *peripheral) ReadCharacteristicByHandle(vh uint16) ([]byte, error) {
+	b := make([]byte, 3)
+	op := byte(attOpReadReq)
+	b[0] = op
+	binary.LittleEndian.PutUint16(b[1:3],vh)
+
+	b = p.sendReq(op, b)
+	b = b[1:]
+	return b, nil
+}
+
 func (p *peripheral) ReadLongCharacteristic(c *Characteristic) ([]byte, error) {
 	// The spec says that a read blob request should fail if the characteristic
 	// is smaller than mtu - 1.  To simplify the API, the first read is done
