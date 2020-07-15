@@ -39,6 +39,9 @@ type Peripheral interface {
 	// ReadCharacteristic retrieves the value of a specified characteristic.
 	ReadCharacteristic(c *Characteristic) ([]byte, error)
 
+	// ReadCharacteristic retrieves the value of a specified handle.
+ 	 ReadCharacteristicByHandle(vh uint16) ([]byte, error)
+
 	// ReadLongCharacteristic retrieves the value of a specified characteristic that is longer than the
 	// MTU.
 	ReadLongCharacteristic(c *Characteristic) ([]byte, error)
